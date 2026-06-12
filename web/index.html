@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="zh-CN" translate="no">
+<head>
+  <meta charset="utf-8">
+  <meta name="google" content="notranslate">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>男装衣橱</title>
+  <script>
+    (function () {
+      var key = "wardrobeTheme";
+      var allowed = { system: true, dark: true, light: true };
+      var pluginThemes = { dark: true, light: true };
+      var fontSizes = { small: true, default: true, large: true, xlarge: true, xxlarge: true };
+      var darkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+      function queryValue(name) {
+        try {
+          return new URLSearchParams(window.location.search).get(name) || "";
+        } catch (error) {
+          return "";
+        }
+      }
+      function read() {
+        var pluginTheme = queryValue("pluginTheme");
+        if (pluginThemes[pluginTheme]) return pluginTheme;
+        if (isHermesEmbed()) return parentEffectiveTheme() || "light";
+        try {
+          var value = window.localStorage.getItem(key) || "system";
+          return allowed[value] ? value : "system";
+        } catch (error) {
+          return "system";
+        }
+      }
+      function isHermesEmbed() {
+        return queryValue("embed") === "hermes";
+      }
+      function parentEffectiveTheme() {
+        if (!isHermesEmbed() || window.parent === window) return "";
+        try {
+          var parentRoot = window.parent.document && window.parent.document.documentElement;
+          if (!parentRoot) return "";
+          var value = parentRoot.getAttribute("data-effective-theme")
+            || parentRoot.getAttribute("data-theme")
+            || parentRoot.getAttribute("data-plugin-theme")
+            || "";
+          return value === "dark" || value === "light" ? value : "";
+        } catch (error) {
+          return "";
+        }
+      }
+      function effectiveTheme(value) {
+        var selected = allowed[value] ? value : read();
+        var inherited = parentEffectiveTheme();
+        if (inherited) return inherited;
+        if (selected === "system") {
+          return darkQuery && darkQuery.matches ? "dark" : "light";
+        }
+        return selected;
+      }
+      function writeMeta(name, content) {
+        var node = document.querySelector('meta[name="' + name + '"]');
+        if (!node) {
+          node = document.createElement("meta");
+          node.setAttribute("name", name);
+          document.head.appendChild(node);
+        }
+        node.setAttribute("content", content);
+      }
+      function apply(value) {
+        var selected = allowed[value] ? value : read();
+        var effective = effectiveTheme(selected);
+        document.documentElement.setAttribute("data-theme", selected);
+        document.documentElement.setAttribute("data-effective-theme", effective);
+        var pluginFontSize = queryValue("pluginFontSize");
+        document.documentElement.setAttribute("data-font-size", fontSizes[pluginFontSize] ? pluginFontSize : "default");
+        writeMeta("theme-color", effective === "dark" ? "#111417" : "#f3efe7");
+        writeMeta("apple-mobile-web-app-status-bar-style", effective === "dark" ? "black-translucent" : "default");
+      }
+      window.wardrobeTheme = { read: read, apply: apply };
+      apply(read());
+    })();
+  </script>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.webmanifest?v=20260402aar">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=20260402aar">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=20260402aar">
+  <link rel="stylesheet" href="/styles.css?v=20260608hostviewport">
+</head>
+<body>
+  <div id="login-overlay" class="login-overlay" hidden>
+    <div id="login-card" class="login-card"></div>
+  </div>
+  <div id="app-loading" class="app-loading" hidden>
+    <div class="app-loading-card">
+      <div class="app-loading-spinner" aria-hidden="true"></div>
+      <div id="app-loading-text" class="app-loading-text">正在加载...</div>
+    </div>
+  </div>
+  <div id="sidebar-overlay" class="sidebar-overlay"></div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-title-row">
+          <h1>男装衣橱</h1>
+        </div>
+        <button id="sidebar-close-btn" type="button" class="sidebar-toggle sidebar-close-arrow" aria-label="收起导航">&lsaquo;</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <div class="page-nav">
+        <div id="app-update-banner" class="app-update-banner" hidden></div>
+        <button id="nav-toggle-btn" type="button" class="nav-dots" aria-haspopup="menu" aria-expanded="false" aria-controls="page-action-menu" aria-label="打开页面菜单">
+          <svg class="nav-dots-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="6" cy="12" r="1.8"></circle>
+            <circle cx="12" cy="12" r="1.8"></circle>
+            <circle cx="18" cy="12" r="1.8"></circle>
+          </svg>
+        </button>
+        <div id="page-action-menu" class="page-action-menu" role="menu" hidden>
+          <button class="page-action-menu-item tab" data-tab="dashboard" type="button" role="menuitem">
+            <span>设置</span>
+          </button>
+          <button id="page-menu-refresh-btn" class="page-action-menu-item page-action-refresh-btn" type="button" role="menuitem">
+            <span>刷新数据</span>
+          </button>
+        </div>
+      </div>
+
+      <section class="panel" id="tab-dashboard">
+        <div class="toolbar">
+          <h2>设置</h2>
+        </div>
+        <div id="auth-summary-card" class="card auth-summary-card"></div>
+        <div id="create-item-panel"></div>
+        <div id="catalog-manager-panel"></div>
+      </section>
+
+      <section class="panel" id="tab-wear-stats">
+        <div class="toolbar">
+          <h2>穿着统计</h2>
+        </div>
+        <div class="card">
+          <div id="wear-stats-chart"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="tab-maintenance-planning">
+        <div class="toolbar">
+          <h2>保养规划</h2>
+        </div>
+        <div class="inventory-toolbar">
+          <div class="search-input-wrap">
+            <input id="maintenance-search-input" type="text" placeholder="搜索货号 / Section / 品牌 / 材质">
+            <button id="maintenance-search-clear-btn" type="button" class="search-clear-btn" aria-label="清除搜索">×</button>
+          </div>
+          <div class="inventory-filter-groups maintenance-filter-groups">
+            <div class="inventory-filter-switcher">
+              <div class="inventory-filter-tabs">
+                <button type="button" class="inventory-filter-tab maintenance-filter-tab active" data-filter-tab="brand">品牌</button>
+                <button type="button" class="inventory-filter-tab maintenance-filter-tab" data-filter-tab="role">Role</button>
+              </div>
+              <button id="maintenance-filter-bulk-btn" type="button" class="inventory-filter-bulk-btn">清空</button>
+            </div>
+            <div class="inventory-filter-panel maintenance-filter-panel active" data-filter-panel="brand">
+              <div id="maintenance-brand-filter" class="inventory-filter-options"></div>
+            </div>
+            <div class="inventory-filter-panel maintenance-filter-panel" data-filter-panel="role">
+              <div id="maintenance-role-filter" class="inventory-filter-options"></div>
+            </div>
+          </div>
+        </div>
+        <div id="maintenance-summary" class="cards compact"></div>
+        <div class="card">
+          <div id="maintenance-chart"></div>
+        </div>
+        <div class="card maintenance-list-card">
+          <div id="maintenance-list"></div>
+        </div>
+      </section>
+
+      <section class="panel active" id="tab-inventory">
+        <div class="toolbar">
+          <h2>我的衣橱</h2>
+          <div class="inventory-toolbar">
+            <div class="search-input-wrap">
+              <input id="search-input" type="text" placeholder="搜索货号 / Section / 材质">
+              <button id="search-clear-btn" type="button" class="search-clear-btn" aria-label="清除搜索">×</button>
+            </div>
+            <div class="inventory-filter-groups">
+              <div class="inventory-filter-switcher">
+                <div class="inventory-filter-tabs">
+                  <button type="button" class="inventory-filter-tab active" data-filter-tab="brand">品牌</button>
+                  <button type="button" class="inventory-filter-tab" data-filter-tab="owner">Owner</button>
+              <button type="button" class="inventory-filter-tab" data-filter-tab="loc">地点</button>
+                  <button type="button" class="inventory-filter-tab" data-filter-tab="role">Role</button>
+                  <button type="button" class="inventory-filter-tab" data-filter-tab="channel">渠道</button>
+                </div>
+                <button id="inventory-filter-bulk-btn" type="button" class="inventory-filter-bulk-btn">清空</button>
+              </div>
+              <div class="inventory-filter-panel active" data-filter-panel="brand">
+                <div id="brand-filter" class="inventory-filter-options"></div>
+              </div>
+              <div class="inventory-filter-panel" data-filter-panel="owner">
+                <div id="owner-filter" class="inventory-filter-options"></div>
+              </div>
+              <div class="inventory-filter-panel" data-filter-panel="loc">
+                <div id="loc-filter" class="inventory-filter-options"></div>
+              </div>
+              <div class="inventory-filter-panel" data-filter-panel="role">
+                <div id="role-filter" class="inventory-filter-options"></div>
+              </div>
+              <div class="inventory-filter-panel" data-filter-panel="channel">
+                <div id="channel-filter" class="inventory-filter-options"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="inventory-summary" class="cards compact"></div>
+        <div class="card">
+          <div id="inventory-brand-share-chart"></div>
+        </div>
+        <div class="inventory-layout inventory-layout-single">
+          <div class="table-card">
+            <table class="inventory-table">
+              <thead>
+                <tr>
+                  <th class="col-section"><button type="button" class="sort-header" data-sort-table="inventory" data-sort-key="section">Section</button></th>
+                  <th class="col-brand"><button type="button" class="sort-header" data-sort-table="inventory" data-sort-key="brand">品牌</button></th>
+                  <th class="col-price"><button type="button" class="sort-header" data-sort-table="inventory" data-sort-key="price">价格</button></th>
+                  <th class="col-relax"><button type="button" class="sort-header" data-sort-table="inventory" data-sort-key="relax">松弛指数</button></th>
+                  <th class="col-total"><button type="button" class="sort-header" data-sort-table="inventory" data-sort-key="total">Total</button></th>
+                  <th class="col-scene"><button type="button" class="sort-header" data-sort-table="inventory" data-sort-key="scene_tag">场景</button></th>
+                  <th class="col-code"><button type="button" class="sort-header" data-sort-table="inventory" data-sort-key="acquired_at">入库时间</button></th>
+                </tr>
+              </thead>
+              <tbody id="items-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="tab-watch-collection">
+        <div class="toolbar">
+          <h2>手表收藏</h2>
+          <div class="inventory-toolbar">
+            <div class="search-input-wrap">
+               <input id="watch-search-input" type="text" placeholder="搜索 Ref / Section / 材质">
+              <button id="watch-search-clear-btn" type="button" class="search-clear-btn" aria-label="清除搜索">×</button>
+            </div>
+            <div class="inventory-filter-groups watch-filter-groups">
+              <div class="inventory-filter-switcher">
+                <div class="inventory-filter-tabs">
+                  <button type="button" class="inventory-filter-tab active watch-filter-tab" data-filter-tab="brand">品牌</button>
+                  <button type="button" class="inventory-filter-tab watch-filter-tab" data-filter-tab="owner">Owner</button>
+                </div>
+                <button id="watch-filter-bulk-btn" type="button" class="inventory-filter-bulk-btn">清空</button>
+              </div>
+              <div class="inventory-filter-panel watch-filter-panel active" data-filter-panel="brand">
+                <div id="watch-brand-filter" class="inventory-filter-options"></div>
+              </div>
+              <div class="inventory-filter-panel watch-filter-panel" data-filter-panel="owner">
+                <div id="watch-owner-filter" class="inventory-filter-options"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="watch-summary" class="cards compact"></div>
+        <div class="card">
+          <div id="watch-brand-share-chart"></div>
+        </div>
+        <div class="inventory-layout inventory-layout-single">
+          <div class="table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th><button type="button" class="sort-header" data-sort-table="watch" data-sort-key="section">Section</button></th>
+                  <th><button type="button" class="sort-header" data-sort-table="watch" data-sort-key="price">价格</button></th>
+                  <th><button type="button" class="sort-header" data-sort-table="watch" data-sort-key="total">Total</button></th>
+                  <th><button type="button" class="sort-header" data-sort-table="watch" data-sort-key="loc">地点</button></th>
+                  <th><button type="button" class="sort-header" data-sort-table="watch" data-sort-key="owner">Owner</button></th>
+                  <th><button type="button" class="sort-header" data-sort-table="watch" data-sort-key="acquired_at">入库时间</button></th>
+                </tr>
+              </thead>
+              <tbody id="watch-items-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="tab-item-detail">
+        <div class="toolbar">
+          <h2>商品详情</h2>
+        </div>
+        <div id="item-detail-view" class="detail-page"></div>
+      </section>
+
+      <section class="panel" id="tab-outfits">
+        <div class="toolbar">
+          <h2>历史记录</h2>
+          <div class="toolbar-actions">
+            <label class="toolbar-owner-field" for="outfit-owner-select">
+              <span>Owner</span>
+              <select id="outfit-owner-select"></select>
+            </label>
+            <label class="toolbar-check-field" for="outfit-photos-only">
+              <input id="outfit-photos-only" type="checkbox">
+              <span>图片</span>
+            </label>
+            <button id="outfit-create-today-btn" type="button" class="ghost-btn">录入今日穿搭</button>
+          </div>
+        </div>
+        <div class="card">
+          <div id="outfit-detail" class="list"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="tab-featured-looks">
+        <div class="toolbar">
+          <h2>精选套装</h2>
+          <div class="toolbar-actions">
+            <label class="toolbar-owner-field" for="featured-look-owner-select">
+              <span>Owner</span>
+              <select id="featured-look-owner-select"></select>
+            </label>
+          </div>
+        </div>
+        <div class="inventory-toolbar featured-looks-toolbar">
+          <div class="search-input-wrap">
+              <input id="featured-looks-search-input" type="text" placeholder="搜索套装编号 / Section / 货号 / 品牌">
+              <button id="featured-looks-search-clear-btn" type="button" class="search-clear-btn" aria-label="清除搜索">×</button>
+          </div>
+        </div>
+        <div id="featured-looks-summary" class="featured-looks-summary"></div>
+        <div id="featured-looks-list" class="featured-look-grid"></div>
+      </section>
+    </main>
+    <nav class="tabs bottom-tabs" aria-label="主页面导航">
+      <button class="tab active" data-tab="inventory">我的衣橱</button>
+      <button class="tab" data-tab="watch-collection">手表收藏</button>
+      <button class="tab" data-tab="wear-stats">穿着统计</button>
+      <button class="tab" data-tab="maintenance-planning">保养规划</button>
+      <button class="tab" data-tab="featured-looks">精选套装</button>
+      <button class="tab" data-tab="outfits">历史记录</button>
+    </nav>
+  </div>
+
+  <template id="photo-template">
+    <div class="photo-card">
+      <img>
+      <div class="photo-meta"></div>
+      <button class="danger small">删除</button>
+    </div>
+  </template>
+
+  <div id="photo-lightbox" class="photo-lightbox" hidden>
+    <button id="photo-lightbox-close" type="button" class="photo-lightbox-close" aria-label="close">&times;</button>
+    <button id="photo-lightbox-delete" type="button" class="photo-lightbox-delete" aria-label="delete">Del</button>
+    <button id="photo-lightbox-prev" type="button" class="photo-lightbox-nav prev" aria-label="previous">&#8249;</button>
+    <div id="photo-lightbox-stage" class="photo-lightbox-stage">
+      <img id="photo-lightbox-image" alt="">
+    </div>
+    <button id="photo-lightbox-next" type="button" class="photo-lightbox-nav next" aria-label="next">&#8250;</button>
+    <div id="photo-lightbox-counter" class="photo-lightbox-counter"></div>
+  </div>
+
+  <script src="/app.js?v=20260608hostviewport"></script>
+</body>
+</html>

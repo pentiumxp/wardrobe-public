@@ -1,0 +1,1 @@
+xuxinxp ALL=(root) NOPASSWD: /usr/local/bin/wardrobe-hot-deploy.sh

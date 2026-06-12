@@ -1,0 +1,1 @@
+"""Wardrobe application package."""

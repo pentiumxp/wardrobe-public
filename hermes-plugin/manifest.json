@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "wardrobe",
+  "title": "Wardrobe",
+  "kind": "embedded_app",
+  "manifest_url": "/api/v1/hermes/plugin/manifest",
+  "entry_url": "/?embed=hermes",
+  "navigation": {
+    "state_event": "wardrobe.plugin.navigation",
+    "back_event": "hermes.plugin.back",
+    "back_result_event": "wardrobe.plugin.back_result",
+    "refresh_required_event": "wardrobe.plugin.refresh_required",
+    "preserve_iframe_state": true
+  },
+  "appearance_sync": {
+    "theme": ["dark", "light"],
+    "fontSize": ["small", "default", "large", "xlarge", "xxlarge"],
+    "launch_field": "appearance",
+    "entry_query": {
+      "theme": "pluginTheme",
+      "fontSize": "pluginFontSize"
+    },
+    "session_endpoint": "/api/v1/hermes/plugin/session"
+  },
+  "mcp_toolset": "wardrobe",
+  "workspace_registration_endpoint": "/api/v1/hermes/plugin/workspaces",
+  "deployment": {
+    "location_independent": true,
+    "recommended_local_base_url": "http://127.0.0.1:8765",
+    "production_base_url": "configured by deployment"
+  },
+  "owner_binding": {
+    "config_file": ".hermes-wardrobe/config.json",
+    "access_key_file": ".hermes-wardrobe/access-key.txt",
+    "cache_dir": ".hermes-cache",
+    "raw_key_in_manifest": false
+  }
+}

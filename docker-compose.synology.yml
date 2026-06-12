@@ -1,0 +1,32 @@
+services:
+  wardrobe:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wardrobe-app
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      WARDROBE_HOST: "0.0.0.0"
+      WARDROBE_PORT: "8765"
+      WARDROBE_STORAGE_DIR: "/data/appdata"
+      WARDROBE_LIBRARY_ROOT: "/library"
+      WARDROBE_CLOSET_DIR: "/library/closet"
+      WARDROBE_WATCH_DIR: "/library/watch"
+      WARDROBE_WUPING_CLOSET_DIR: "/library/closet-wuping"
+      WARDROBE_CLOSET_HOST_DIR: "/volume1/Wardrobe/drive-smb/closet-sync"
+      WARDROBE_WATCH_HOST_DIR: "/volume1/Wardrobe/drive-smb/watch-sync"
+      WARDROBE_WUPING_CLOSET_HOST_DIR: "/volume1/Hermes-吴萍/衣橱"
+      WARDROBE_DESKTOP_DIR: "/library/closet"
+      WARDROBE_EXPORT_UID: "1026"
+      WARDROBE_EXPORT_GID: "100"
+      WARDROBE_ALLOWED_ORIGINS: "http://localhost:8765,http://127.0.0.1:8765,http://DS2419plus:8765,https://wardrobe-xuxin.synology.me,http://wardrobe-xuxin.synology.me"
+    volumes:
+      - /volume1/Wardrobe/appdata:/data/appdata
+      - /volume1/Wardrobe/wardrobe-app/app.py:/app/app.py:ro
+      - /volume1/Wardrobe/wardrobe-app/wardrobe_app:/app/wardrobe_app:ro
+      - /volume1/Wardrobe/wardrobe-app/web:/app/web:ro
+      - /volume1/Wardrobe/drive-smb/closet-sync:/library/closet
+      - /volume1/Wardrobe/drive-smb/watch-sync:/library/watch
+      - /volume1/Hermes-吴萍/衣橱:/library/closet-wuping

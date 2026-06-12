@@ -1,0 +1,25 @@
+# Runtime data
+data/
+media/
+baseline_exports/
+.agent-context/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Logs and temp files
+tmp_*.log
+tmp_*.docx
+tmp_*.tmp
+
+# Local environment / debug artifacts
+.codegraph/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
