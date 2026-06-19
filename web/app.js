@@ -147,6 +147,8 @@ const state = {
   catalogManagerError: "",
   catalogManagerSuccess: "",
   manualRefreshLoading: false,
+  startupDeferredRefreshScheduled: false,
+  startupDeferredRefreshRunning: false,
   pluginReconnectTimer: null,
   pluginReconnectAttempts: 0,
   pluginReconnectBootstrapping: false,
@@ -7644,6 +7646,70 @@ function applyInitialPluginActionAfterBootstrap() {
   }
 }
 
+function currentStartupRouteKey() {
+  const rawHash = window.location.hash.replace(/^#/, "");
+  const [hash] = rawHash.split("?");
+  if (!hash) return "inventory";
+  if (hash === "recommend") return "featured-looks";
+  if (hash.startsWith("item-")) return "item-detail";
+  if (["dashboard", "wear-stats", "maintenance-planning", "inventory", "watch-collection", "outfits", "featured-looks"].includes(hash)) {
+    return hash;
+  }
+  return "inventory";
+}
+
+async function refreshCurrentStartupRouteData(routeKey) {
+  if (routeKey === "inventory") {
+    await refreshItems();
+    return;
+  }
+  if (routeKey === "watch-collection") {
+    await refreshWatchItems();
+    return;
+  }
+  if (routeKey === "wear-stats" || routeKey === "maintenance-planning") {
+    await Promise.all([refreshItems(), refreshWatchItems()]);
+  }
+}
+
+function scheduleDeferredStartupRefresh(primaryRouteKey) {
+  if (state.startupDeferredRefreshScheduled || state.startupDeferredRefreshRunning) return;
+  state.startupDeferredRefreshScheduled = true;
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      refreshDeferredStartupData(primaryRouteKey).catch((error) => console.error("deferred_startup_refresh_failed", error));
+    });
+  });
+}
+
+async function refreshDeferredStartupData(primaryRouteKey) {
+  if (state.startupDeferredRefreshRunning) return;
+  state.startupDeferredRefreshRunning = true;
+  try {
+    const tasks = [];
+    if (primaryRouteKey !== "inventory") {
+      tasks.push(refreshItems());
+    }
+    if (primaryRouteKey !== "watch-collection") {
+      tasks.push(refreshWatchItems());
+    }
+    if (primaryRouteKey !== "outfits" && !state.outfits.length) {
+      tasks.push(refreshOutfits());
+    }
+    if (primaryRouteKey !== "featured-looks" && !state.featuredLooks.length) {
+      tasks.push(refreshFeaturedLooks());
+    }
+    const results = await Promise.allSettled(tasks);
+    results
+      .filter((result) => result.status === "rejected")
+      .forEach((result) => console.error("deferred_startup_refresh_task_failed", result.reason));
+    renderWearShareChart();
+    refreshMaintenancePlanning();
+  } finally {
+    state.startupDeferredRefreshRunning = false;
+  }
+}
+
 function closeCreateItemPanel() {
   state.createItemMode = false;
   state.createItemSaving = false;
@@ -7768,25 +7834,24 @@ function stopAutoImportPolling() {
 
 async function bootstrapAuthenticatedApp() {
   ensureAutoImportPolling();
+  const startupRouteKey = currentStartupRouteKey();
   showAppLoading("正在加载首页...");
   try {
     try {
-      await Promise.all([loadDashboard(), refreshDashboardItems()]);
+      await loadDashboard();
+      await refreshDashboardItems();
     } catch (error) {
       throw new Error(`加载首页数据: ${error?.message || error || "failed"}`);
     }
-    showAppLoading("正在加载筛选选项...");
     try {
       await refreshOptions();
-      renderWearShareChart();
     } catch (error) {
       throw new Error(`加载筛选选项: ${error?.message || error || "failed"}`);
     }
-    showAppLoading("正在整理页面...");
     try {
-      await Promise.all([refreshItems(), refreshWatchItems(), refreshOutfits()]);
+      await refreshCurrentStartupRouteData(startupRouteKey);
     } catch (error) {
-      throw new Error(`整理页面内容: ${error?.message || error || "failed"}`);
+      throw new Error(`加载当前页面: ${error?.message || error || "failed"}`);
     }
     renderPhotos(null);
     renderItemDetail(null);
@@ -7794,12 +7859,12 @@ async function bootstrapAuthenticatedApp() {
     updateInventorySearchUi();
     updateWatchSearchUi();
     updateFeaturedLooksSearchUi();
-    showAppLoading("正在打开页面...");
     await handleRoute();
     applyInitialPluginActionAfterBootstrap();
   } finally {
     hideAppLoading();
   }
+  scheduleDeferredStartupRefresh(startupRouteKey);
 }
 
 async function submitPasswordChange() {
