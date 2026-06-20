@@ -1028,6 +1028,9 @@ const fields = [
 const TOP_LEVEL_TABS = new Set(["dashboard", "wear-stats", "maintenance-planning", "inventory", "watch-collection", "outfits", "featured-looks"]);
 
 function $(id) {
+  if (id === "search-input") {
+    return document.getElementById("search-input") || document.getElementById("messageInput");
+  }
   return document.getElementById(id);
 }
 

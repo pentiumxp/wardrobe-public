@@ -947,16 +947,9 @@ body.sidebar-open .sidebar-overlay {
   appearance: none;
 }
 
-.visual-keyboard-probe-input {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
+#messageInput,
 #search-input,
-.visual-keyboard-probe-input + .search-clear-btn {
+.search-clear-btn {
   position: relative;
   z-index: 1;
 }
