@@ -226,8 +226,8 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
 
         self.assertIn('class="tabs bottom-tabs"', index_html)
         self.assertIn('aria-label="主页面导航"', index_html)
-        self.assertIn("styles.css?v=20260608hostviewport", index_html)
-        self.assertIn("app.js?v=20260608hostviewport", index_html)
+        self.assertIn("styles.css?v=20260620visualkeyboard", index_html)
+        self.assertIn("app.js?v=20260620visualkeyboard", index_html)
         self.assertIn('CLIENT_BUILD_VERSION = "20260608hostviewport"', app_js)
         self.assertIn(".bottom-tabs", styles_css)
         self.assertIn("body.secondary-route .bottom-tabs", styles_css)
@@ -302,7 +302,7 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         self.assertNotIn("/api/ai-prompts", app_js)
         self.assertNotIn("/ai-review", app_js)
         self.assertNotIn("/ai-analysis", app_js)
-        self.assertIn("20260608hostviewport", index_html)
+        self.assertIn("20260620visualkeyboard", index_html)
 
     def test_index_disables_machine_translation_for_embedded_chinese_ui(self) -> None:
         index_html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")

@@ -664,6 +664,8 @@ function applyPluginViewportState(reason = "viewport") {
   const metrics = currentPluginViewportMetrics();
   document.body.classList.add("hermes-plugin-embed");
   document.body.classList.toggle("keyboard-viewport-active", Boolean(metrics.keyboardVisible));
+  document.documentElement.classList.toggle("keyboard-open", Boolean(metrics.keyboardVisible));
+  document.documentElement.style.setProperty("--app-height", `${metrics.height}px`);
   document.documentElement.style.setProperty("--wardrobe-plugin-visible-height", `${metrics.height}px`);
   document.documentElement.style.setProperty("--wardrobe-plugin-layout-height", `${metrics.layoutHeight}px`);
   document.documentElement.style.setProperty("--wardrobe-plugin-keyboard-bottom", `${metrics.keyboardBottom}px`);
@@ -679,6 +681,11 @@ function handlePluginViewportMessage(data) {
   applyPluginViewportState("host-message");
   return true;
 }
+
+window.handleHermesPluginViewportMessage = handlePluginViewportMessage;
+window.__codexMobileVisualHarness = Object.assign({}, window.__codexMobileVisualHarness || {}, {
+  hostViewport: () => state.hermesHostViewport || null,
+});
 
 const nativeFetch = window.fetch.bind(window);
 window.fetch = (input, init = {}) => {
