@@ -54,6 +54,11 @@ Theme preference is local browser state and supports `system`, `dark`, and
 `light`. Dark mode must cover shell, detail pages, media cards, settings,
 forms, dialogs, and loading states.
 
+The Web UI must not depend on browser-native `alert`, `confirm`, or `prompt`
+dialogs for user-visible flows. Embedded iOS/WebView shells may suppress those
+dialogs, so destructive confirmations and error notices must use the in-app
+dialog surface.
+
 ## Wardrobe MCP
 
 Wardrobe MCP is an adapter around Program API. It must not read or write

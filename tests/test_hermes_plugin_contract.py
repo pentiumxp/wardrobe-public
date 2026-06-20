@@ -226,8 +226,8 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
 
         self.assertIn('class="tabs bottom-tabs"', index_html)
         self.assertIn('aria-label="主页面导航"', index_html)
-        self.assertIn("styles.css?v=20260620visualkeyboard", index_html)
-        self.assertIn("app.js?v=20260620visualkeyboard", index_html)
+        self.assertIn("styles.css?v=20260620appdialog", index_html)
+        self.assertIn("app.js?v=20260620appdialog", index_html)
         self.assertIn('CLIENT_BUILD_VERSION = "20260608hostviewport"', app_js)
         self.assertIn(".bottom-tabs", styles_css)
         self.assertIn("body.secondary-route .bottom-tabs", styles_css)
@@ -302,7 +302,19 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         self.assertNotIn("/api/ai-prompts", app_js)
         self.assertNotIn("/ai-review", app_js)
         self.assertNotIn("/ai-analysis", app_js)
-        self.assertIn("20260620visualkeyboard", index_html)
+        self.assertIn("20260620appdialog", index_html)
+
+    def test_frontend_uses_in_app_dialogs_not_browser_popups(self) -> None:
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function showAppAlert", app_js)
+        self.assertIn("function showAppConfirm", app_js)
+        self.assertNotIn("window.alert", app_js)
+        self.assertNotIn("window.confirm", app_js)
+        self.assertNotIn("window.prompt", app_js)
+        self.assertNotRegex(app_js, r"(?<![A-Za-z0-9_$])alert\s*\(")
+        self.assertNotRegex(app_js, r"(?<![A-Za-z0-9_$])confirm\s*\(")
+        self.assertIn("promptEvent.prompt()", app_js)
 
     def test_index_disables_machine_translation_for_embedded_chinese_ui(self) -> None:
         index_html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")

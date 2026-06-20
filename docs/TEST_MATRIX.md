@@ -73,6 +73,9 @@ Expected coverage:
   `hermes.plugin.viewport` event before falling back to iframe-local
   `visualViewport`, so native keyboard open does not push form inputs outside
   the visible iframe area.
+- frontend destructive confirmations and user-visible errors use in-app dialog
+  DOM instead of browser-native `alert`, `confirm`, or `prompt`, so they remain
+  visible inside iOS/WebView embedding.
 
 ## Embed Mode Harness
 

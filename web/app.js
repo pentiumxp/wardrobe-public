@@ -205,6 +205,134 @@ const FALLBACK_AUTH_ACCOUNTS = [
   { username: "徐欣", remaining_attempts: 3, locked: false },
   { username: "吴萍", remaining_attempts: 3, locked: false },
 ];
+let activeAppDialogCleanup = null;
+
+function ensureAppDialogRoot() {
+  let root = document.getElementById("app-dialog-root");
+  if (root) return root;
+  root = document.createElement("div");
+  root.id = "app-dialog-root";
+  root.className = "app-dialog-root";
+  root.hidden = true;
+  document.body.appendChild(root);
+  return root;
+}
+
+function showAppDialog(options = {}) {
+  const root = ensureAppDialogRoot();
+  if (activeAppDialogCleanup) activeAppDialogCleanup(false);
+  const titleText = String(options.title || "提示");
+  const messageText = String(options.message || "");
+  const confirmLabel = String(options.confirmLabel || "确定");
+  const cancelLabel = options.cancelLabel ? String(options.cancelLabel) : "";
+  const destructive = Boolean(options.destructive);
+  return new Promise((resolve) => {
+    const titleId = `app-dialog-title-${Date.now()}`;
+    root.replaceChildren();
+    root.hidden = false;
+    root.setAttribute("aria-hidden", "false");
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "app-dialog-backdrop";
+
+    const panel = document.createElement("section");
+    panel.className = "app-dialog-panel";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("aria-labelledby", titleId);
+
+    const title = document.createElement("h2");
+    title.id = titleId;
+    title.className = "app-dialog-title";
+    title.textContent = titleText;
+
+    const message = document.createElement("p");
+    message.className = "app-dialog-message";
+    message.textContent = messageText;
+
+    const actions = document.createElement("div");
+    actions.className = "app-dialog-actions";
+
+    let cancelButton = null;
+    if (cancelLabel) {
+      cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "app-dialog-button secondary";
+      cancelButton.textContent = cancelLabel;
+      actions.appendChild(cancelButton);
+    }
+
+    const confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.className = `app-dialog-button primary${destructive ? " danger" : ""}`;
+    confirmButton.textContent = confirmLabel;
+    actions.appendChild(confirmButton);
+
+    panel.append(title, message, actions);
+    root.append(backdrop, panel);
+    document.body.classList.add("app-dialog-open");
+
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const finish = (value) => {
+      if (activeAppDialogCleanup !== finish) return;
+      activeAppDialogCleanup = null;
+      document.removeEventListener("keydown", onKeyDown, true);
+      root.hidden = true;
+      root.setAttribute("aria-hidden", "true");
+      root.replaceChildren();
+      document.body.classList.remove("app-dialog-open");
+      if (previousFocus && document.contains(previousFocus)) {
+        try { previousFocus.focus({ preventScroll: true }); } catch (error) {}
+      }
+      resolve(Boolean(value));
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      }
+      if (event.key === "Tab") {
+        const focusables = [cancelButton, confirmButton].filter(Boolean);
+        if (!focusables.length) return;
+        const currentIndex = focusables.indexOf(document.activeElement);
+        if (event.shiftKey && currentIndex <= 0) {
+          event.preventDefault();
+          focusables[focusables.length - 1].focus();
+        } else if (!event.shiftKey && currentIndex === focusables.length - 1) {
+          event.preventDefault();
+          focusables[0].focus();
+        }
+      }
+    };
+
+    activeAppDialogCleanup = finish;
+    backdrop.addEventListener("click", () => finish(false));
+    cancelButton?.addEventListener("click", () => finish(false));
+    confirmButton.addEventListener("click", () => finish(true));
+    document.addEventListener("keydown", onKeyDown, true);
+    window.setTimeout(() => {
+      (cancelButton || confirmButton).focus({ preventScroll: true });
+    }, 0);
+  });
+}
+
+function showAppAlert(message, options = {}) {
+  return showAppDialog({
+    title: options.title || "提示",
+    message,
+    confirmLabel: options.confirmLabel || "知道了",
+  });
+}
+
+function showAppConfirm(message, options = {}) {
+  return showAppDialog({
+    title: options.title || "确认操作",
+    message,
+    confirmLabel: options.confirmLabel || "确认",
+    cancelLabel: options.cancelLabel || "取消",
+    destructive: Boolean(options.destructive),
+  });
+}
 
 function initPluginSessionFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -2469,7 +2597,11 @@ function confirmPhotoDelete(photo, context) {
   }[context?.entityType] || "当前";
   const name = String(photo?.original_name || photo?.file_name || "").trim();
   const suffix = name ? `\n\n图片：${name}` : "";
-  return window.confirm(`确认删除这张${scopeLabel}图片？删除后不能撤销。${suffix}`);
+  return showAppConfirm(`确认删除这张${scopeLabel}图片？删除后不能撤销。${suffix}`, {
+    title: "删除图片",
+    confirmLabel: "删除",
+    destructive: true,
+  });
 }
 
 function detailValue(value) {
@@ -3078,7 +3210,7 @@ function findFeaturedLookById(lookId) {
 async function copyOutfitSummary(button, outfitId) {
   const outfit = await ensureOutfitForCopy(outfitId);
   if (!outfit) {
-    window.alert("当前历史记录详情还没有加载完成。");
+    await showAppAlert("当前历史记录详情还没有加载完成。");
     return;
   }
   await writeClipboardText(buildOutfitCopyText(outfit));
@@ -3088,7 +3220,7 @@ async function copyOutfitSummary(button, outfitId) {
 async function copyFeaturedLookSummary(button, lookId) {
   const look = findFeaturedLookForCopy(lookId);
   if (!look) {
-    window.alert("当前套装详情还没有加载完成。");
+    await showAppAlert("当前套装详情还没有加载完成。");
     return;
   }
   await writeClipboardText(buildFeaturedLookCopyText(look));
@@ -3101,7 +3233,7 @@ async function copyItemDetailSummary(button, itemId) {
     ? state.selectedItemDetail
     : findKnownItemById(id);
   if (!item) {
-    window.alert("当前商品详情还没有加载完成。");
+    await showAppAlert("当前商品详情还没有加载完成。");
     return;
   }
   await writeClipboardText(buildItemCopyText(item));
@@ -4944,7 +5076,10 @@ function refreshMaintenancePlanning() {
 async function sendItemToMaintenance(itemId) {
   const targetId = Number(itemId || 0);
   if (!Number.isFinite(targetId) || targetId <= 0) return;
-  const confirmed = window.confirm("确认将这件商品标记为保养中？这会把磨损指数归零、保养次数加一，并单独标记为保养中。");
+  const confirmed = await showAppConfirm("确认将这件商品标记为保养中？这会把磨损指数归零、保养次数加一，并单独标记为保养中。", {
+    title: "标记保养",
+    confirmLabel: "标记",
+  });
   if (!confirmed) return;
   await api(`/api/items/${targetId}/maintenance`, {
     method: "POST",
@@ -4966,7 +5101,10 @@ async function sendItemToMaintenance(itemId) {
 async function activateMaintainedItem(itemId) {
   const targetId = Number(itemId || 0);
   if (!Number.isFinite(targetId) || targetId <= 0) return;
-  const confirmed = window.confirm("确认将这件商品改回激活状态并重新开始使用？");
+  const confirmed = await showAppConfirm("确认将这件商品改回激活状态并重新开始使用？", {
+    title: "恢复激活",
+    confirmLabel: "恢复",
+  });
   if (!confirmed) return;
   await api(`/api/items/${targetId}/activate`, {
     method: "POST",
@@ -5272,7 +5410,7 @@ function renderItemDetailPanel(hostId, item, message = "请选择一件产品查
     try {
       await copyItemDetailSummary(host.querySelector("#item-detail-copy-btn"), Number(item.id || 0));
     } catch (_) {
-      window.alert("复制到剪贴板失败。");
+      await showAppAlert("复制到剪贴板失败。");
     }
   });
   host.querySelector("#item-detail-edit-btn")?.addEventListener("click", () => {
@@ -6688,7 +6826,11 @@ function hideAppLoading() {
 }
 
 async function deleteSelectedOutfit(outfitId) {
-  if (!window.confirm("确认删除最近一条历史记录？这会回滚对应的累计穿着次数。")) return;
+  if (!await showAppConfirm("确认删除最近一条历史记录？这会回滚对应的累计穿着次数。", {
+    title: "删除历史记录",
+    confirmLabel: "删除",
+    destructive: true,
+  })) return;
   try {
     await api(`/api/outfits/${outfitId}`, { method: "DELETE" });
     closeOutfitEdit();
@@ -6697,7 +6839,7 @@ async function deleteSelectedOutfit(outfitId) {
       renderItemDetail(state.selectedItemDetail);
     }
   } catch (error) {
-    window.alert(error.message || "delete_failed");
+    await showAppAlert(error.message || "delete_failed");
   }
 }
 
@@ -6715,7 +6857,7 @@ async function saveSelectedOutfitAsLook(outfitId) {
     }
     await refreshFeaturedLooks();
   } catch (error) {
-    window.alert(error.message || "save_as_featured_look_failed");
+    await showAppAlert(error.message || "save_as_featured_look_failed");
   }
 }
 
@@ -6804,7 +6946,11 @@ async function saveFeaturedLookEdit(lookId) {
 }
 
 async function deleteFeaturedLook(lookId) {
-  if (!window.confirm("确认删除这套精选套装？")) return;
+  if (!await showAppConfirm("确认删除这套精选套装？", {
+    title: "删除精选套装",
+    confirmLabel: "删除",
+    destructive: true,
+  })) return;
   try {
     await api(`/api/featured-looks/${lookId}`, { method: "DELETE" });
     closeFeaturedLookEdit();
@@ -6813,7 +6959,7 @@ async function deleteFeaturedLook(lookId) {
       await refreshRelatedFeaturedLooks(state.relatedFeaturedLookItemId);
     }
   } catch (error) {
-    window.alert(error.message || "delete_featured_look_failed");
+    await showAppAlert(error.message || "delete_featured_look_failed");
   }
 }
 
@@ -7980,7 +8126,7 @@ async function refreshAppData({ showOverlay = true } = {}) {
     await handleRoute();
   } catch (error) {
     console.error(error);
-    window.alert(`刷新失败: ${error?.message || error || "unknown_error"}`);
+    await showAppAlert(`刷新失败: ${error?.message || error || "unknown_error"}`);
   } finally {
     state.manualRefreshLoading = false;
     renderAuthSummary();
@@ -8320,7 +8466,7 @@ async function init() {
       try {
         await copyOutfitSummary(copyOutfitButton, Number(copyOutfitButton.dataset.copyOutfit || 0));
       } catch (error) {
-        window.alert("复制到剪贴板失败。");
+        await showAppAlert("复制到剪贴板失败。");
       }
       return;
     }
@@ -8331,7 +8477,7 @@ async function init() {
       try {
         await copyFeaturedLookSummary(copyFeaturedLookButton, Number(copyFeaturedLookButton.dataset.copyFeaturedLook || 0));
       } catch (error) {
-        window.alert("复制到剪贴板失败。");
+        await showAppAlert("复制到剪贴板失败。");
       }
       return;
     }
@@ -8346,7 +8492,7 @@ async function init() {
           photoOrderButton.dataset.photoOrderAction || "",
         );
       } catch (error) {
-        alert(parseApiErrorMessage(error) || "图片顺序调整失败。");
+        await showAppAlert(parseApiErrorMessage(error) || "图片顺序调整失败。");
       }
       return;
     }
@@ -8495,7 +8641,7 @@ async function init() {
     try {
       await uploadSelectedEntityPhotos(uploadUrl, entityType, entityId, files);
     } catch (error) {
-      alert(error?.message || "图片上传失败。");
+      await showAppAlert(error?.message || "图片上传失败。");
     } finally {
       input.value = "";
     }
@@ -8634,7 +8780,7 @@ async function init() {
     const deletePath = currentPhoto?.delete_path;
     const context = state.photoLightboxContext;
     if (!deletePath || !context) return;
-    if (!confirmPhotoDelete(currentPhoto, context)) return;
+    if (!await confirmPhotoDelete(currentPhoto, context)) return;
     state.photoLightboxDeleting = true;
     updatePhotoLightbox();
     try {
@@ -8667,7 +8813,7 @@ async function init() {
       }
       openPhotoLightbox(photos, state.photoLightboxIndex, context);
     } catch (error) {
-      window.alert(parseApiErrorMessage(error) || "图片删除失败。");
+      await showAppAlert(parseApiErrorMessage(error) || "图片删除失败。");
     } finally {
       state.photoLightboxDeleting = false;
       if ((state.photoLightboxPhotos || []).length) {
@@ -8823,7 +8969,7 @@ async function init() {
       await refreshItems();
       if (state.selectedItemId) await selectItem(state.selectedItemId);
     } catch (error) {
-      window.alert(error?.message || "保存失败");
+      await showAppAlert(error?.message || "保存失败");
     }
   });
 
@@ -8873,5 +9019,5 @@ disableMobileZoom();
 
 init().catch((error) => {
   console.error(error);
-  alert(`初始化失败: ${error.message}`);
+  showAppAlert(`初始化失败: ${error.message}`);
 });
