@@ -84,7 +84,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260402aar">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=20260402aar">
   <link rel="apple-touch-icon" href="/icons/icon-192.png?v=20260402aar">
-  <link rel="stylesheet" href="/styles.css?v=20260608hostviewport">
+  <link rel="stylesheet" href="/styles.css?v=20260620visualkeyboard">
 </head>
 <body>
   <div id="login-overlay" class="login-overlay" hidden>
@@ -183,8 +183,9 @@
         <div class="toolbar">
           <h2>我的衣橱</h2>
           <div class="inventory-toolbar">
-            <div class="search-input-wrap">
+            <div id="composer" class="search-input-wrap composer">
               <input id="search-input" type="text" placeholder="搜索货号 / Section / 材质">
+              <input id="messageInput" class="visual-keyboard-probe-input" type="text" aria-hidden="true" tabindex="-1" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
               <button id="search-clear-btn" type="button" class="search-clear-btn" aria-label="清除搜索">×</button>
             </div>
             <div class="inventory-filter-groups">
