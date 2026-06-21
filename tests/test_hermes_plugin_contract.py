@@ -289,9 +289,14 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         self.assertIn("function authenticatedResourceUrl(raw)", app_js)
         self.assertIn('url.pathname.startsWith("/api/")', app_js)
         self.assertIn('url.searchParams.set("plugin_session", sessionToken)', app_js)
+        self.assertIn("function resourceUrlWithParams(raw, params = {})", app_js)
+        self.assertIn("url.searchParams.set(key, String(value))", app_js)
         self.assertIn("function photoUrl(photo", app_js)
         self.assertIn("photo.content_path", app_js)
-        self.assertIn('`/api/photos/${photo.id}/content${suffix}`', app_js)
+        self.assertIn("resourceUrlWithParams(authenticatedResourceUrl(photo.content_path), params)", app_js)
+        self.assertIn("resourceUrlWithParams(authenticatedResourceUrl(`/api/photos/${photo.id}/content`), params)", app_js)
+        self.assertNotIn('`${photo.content_path}${suffix}`', app_js)
+        self.assertNotIn('`/api/photos/${photo.id}/content${suffix}`', app_js)
         self.assertIn('return `/media/${photo.file_name}`;', app_js)
 
     def test_frontend_native_ai_entrypoints_are_removed(self) -> None:

@@ -412,6 +412,17 @@ function authenticatedResourceUrl(raw) {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+function resourceUrlWithParams(raw, params = {}) {
+  if (!raw) return raw;
+  const url = new URL(raw, window.location.href);
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value === undefined || value === null || value === false) continue;
+    url.searchParams.set(key, String(value));
+  }
+  if (url.origin === window.location.origin) return `${url.pathname}${url.search}${url.hash}`;
+  return url.toString();
+}
+
 function normalizePluginAppearance(value) {
   const source = value && typeof value === "object" ? value : {};
   const theme = PLUGIN_THEME_OPTIONS.has(source.theme) ? source.theme : "light";
@@ -2361,9 +2372,9 @@ function photoUrl(photo, { thumb = false } = {}) {
   const fallback = `data:image/svg+xml;utf8,${encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="#e8dece"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI" font-size="16" fill="#6b6258">${photo.original_name || photo.file_name}</text></svg>`
   )}`;
-  const suffix = thumb ? "?thumb=1" : "";
-  if (photo.content_path) return authenticatedResourceUrl(`${photo.content_path}${suffix}`);
-  if (photo.has_blob) return authenticatedResourceUrl(`/api/photos/${photo.id}/content${suffix}`);
+  const params = thumb ? { thumb: "1" } : {};
+  if (photo.content_path) return resourceUrlWithParams(authenticatedResourceUrl(photo.content_path), params);
+  if (photo.has_blob) return resourceUrlWithParams(authenticatedResourceUrl(`/api/photos/${photo.id}/content`), params);
   if (photo.source_tag === "upload") return `/media/${photo.file_name}`;
   return fallback;
 }
