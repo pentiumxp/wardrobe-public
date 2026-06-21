@@ -293,8 +293,13 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         self.assertIn("url.searchParams.set(key, String(value))", app_js)
         self.assertIn("function photoUrl(photo", app_js)
         self.assertIn("photo.content_path", app_js)
+        self.assertIn('photo.content_path.startsWith("/api/v1/items/")', app_js)
         self.assertIn("resourceUrlWithParams(authenticatedResourceUrl(photo.content_path), params)", app_js)
         self.assertIn("resourceUrlWithParams(authenticatedResourceUrl(`/api/photos/${photo.id}/content`), params)", app_js)
+        self.assertLess(
+            app_js.index('photo.content_path.startsWith("/api/v1/items/")'),
+            app_js.index("if (photo.content_path) return resourceUrlWithParams(authenticatedResourceUrl(photo.content_path), params);"),
+        )
         self.assertNotIn('`${photo.content_path}${suffix}`', app_js)
         self.assertNotIn('`/api/photos/${photo.id}/content${suffix}`', app_js)
         self.assertIn('return `/media/${photo.file_name}`;', app_js)

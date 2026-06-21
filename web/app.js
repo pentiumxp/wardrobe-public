@@ -2373,6 +2373,9 @@ function photoUrl(photo, { thumb = false } = {}) {
       `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="#e8dece"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI" font-size="16" fill="#6b6258">${photo.original_name || photo.file_name}</text></svg>`
   )}`;
   const params = thumb ? { thumb: "1" } : {};
+  if (photo.content_path && photo.content_path.startsWith("/api/v1/items/") && photo.id) {
+    return resourceUrlWithParams(authenticatedResourceUrl(`/api/photos/${photo.id}/content`), params);
+  }
   if (photo.content_path) return resourceUrlWithParams(authenticatedResourceUrl(photo.content_path), params);
   if (photo.has_blob) return resourceUrlWithParams(authenticatedResourceUrl(`/api/photos/${photo.id}/content`), params);
   if (photo.source_tag === "upload") return `/media/${photo.file_name}`;
