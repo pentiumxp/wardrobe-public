@@ -28,6 +28,7 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         required = [
             ROOT / "docs" / "README.md",
             ROOT / "docs" / "ARCHITECTURE.md",
+            ROOT / "docs" / "WARDROBE_PRODUCT_REALITY.md",
             ROOT / "docs" / "MODULES" / "hermes-plugin.md",
             ROOT / "docs" / "TEST_MATRIX.md",
             ROOT / "docs" / "RUNBOOKS" / "hermes-plugin-debug.md",
@@ -44,6 +45,7 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         docs = [
             ROOT / "docs" / "README.md",
             ROOT / "docs" / "ARCHITECTURE.md",
+            ROOT / "docs" / "WARDROBE_PRODUCT_REALITY.md",
             ROOT / "docs" / "MODULES" / "hermes-plugin.md",
             ROOT / "docs" / "TEST_MATRIX.md",
             ROOT / "docs" / "RUNBOOKS" / "hermes-plugin-debug.md",
@@ -65,6 +67,7 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         docs = [
             ROOT / "docs" / "README.md",
             ROOT / "docs" / "ARCHITECTURE.md",
+            ROOT / "docs" / "WARDROBE_PRODUCT_REALITY.md",
             ROOT / "docs" / "MODULES" / "hermes-plugin.md",
             ROOT / "docs" / "TEST_MATRIX.md",
             ROOT / "docs" / "RUNBOOKS" / "hermes-plugin-debug.md",
@@ -218,6 +221,90 @@ console.log(JSON.stringify(states));
         self.assertEqual(states["outfit_history"]["route"], "#outfits?mode=history")
         self.assertEqual(states["outfit_history"]["state"]["tab"], "outfits")
         self.assertFalse(states["outfit_history"]["state"]["opensTodayOutfit"])
+
+    def test_product_reality_journeys_map_to_executable_boundaries(self) -> None:
+        product_doc = (ROOT / "docs" / "WARDROBE_PRODUCT_REALITY.md").read_text(encoding="utf-8")
+        docs_readme = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+        test_matrix = (ROOT / "docs" / "TEST_MATRIX.md").read_text(encoding="utf-8")
+        index_html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        server_py = (ROOT / "wardrobe_app" / "server.py").read_text(encoding="utf-8")
+        program_tests = (ROOT / "tests" / "test_program_api_helpers.py").read_text(encoding="utf-8")
+        script = """
+const contract = require("./web/plugin-action-routes.js");
+const actions = ["add_item", "today", "style", "packing", "inventory", "outfit_history"];
+const states = Object.fromEntries(actions.map((action) => {
+  const route = contract.routeForPluginAction(action);
+  return [action, { route, state: contract.actionStateForHash(route) }];
+}));
+console.log(JSON.stringify(states));
+"""
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        states = json.loads(result.stdout)
+
+        journeys = {
+            "inventory-item-photo-lifecycle": {
+                "route": states["add_item"],
+                "tab": "inventory",
+                "mode": "add_item",
+                "dom": ["tab-inventory", "create-item-panel", "messageInput", "photo-template", "photo-lightbox-delete"],
+                "app": ["openCreateItemPanel", "showAppConfirm", "renderEntityPhotoSection"],
+                "api": ["/api/v1/items", "/photos", 'photo.content_path.startsWith("/api/v1/items/")'],
+            },
+            "today-outfit-capture": {
+                "route": states["today"],
+                "tab": "outfits",
+                "mode": "today",
+                "dom": ["tab-outfits", "outfit-create-today-btn"],
+                "app": ["openTodayOutfitAction", "todayOutfitSummary", "selectedOutfitDate = today"],
+                "api": ["/api/v1/history/outfits"],
+            },
+            "styling-reference": {
+                "route": states["style"],
+                "tab": "featured-looks",
+                "mode": "style",
+                "dom": ["tab-featured-looks", "featured-looks-summary", "featured-looks-list"],
+                "app": ["featuredLookActionMode", "data-plugin-action-mode", "配衣服参考"],
+                "api": ["/api/featured-looks"],
+            },
+            "packing-reference": {
+                "route": states["packing"],
+                "tab": "featured-looks",
+                "mode": "packing",
+                "dom": ["tab-featured-looks", "featured-looks-summary", "featured-looks-list"],
+                "app": ["featuredLookActionMode", "data-plugin-action-mode", "出行打包参考"],
+                "api": ["/api/featured-looks"],
+            },
+        }
+
+        self.assertIn("WARDROBE_PRODUCT_REALITY.md", docs_readme)
+        self.assertIn("## Product Journey Harness", test_matrix)
+        for journey_id, contract in journeys.items():
+            with self.subTest(journey=journey_id):
+                self.assertIn(f"`{journey_id}`", product_doc)
+                self.assertIn(journey_id, test_matrix)
+                self.assertEqual(contract["route"]["state"]["tab"], contract["tab"])
+                self.assertEqual(contract["route"]["state"]["mode"], contract["mode"])
+                for dom_id in contract["dom"]:
+                    self.assertIn(dom_id, index_html)
+                for app_boundary in contract["app"]:
+                    self.assertIn(app_boundary, app_js)
+                for api_boundary in contract["api"]:
+                    self.assertTrue(
+                        api_boundary in server_py or api_boundary in program_tests or api_boundary in app_js,
+                        api_boundary,
+                    )
+
+        self.assertTrue(states["today"]["state"]["opensTodayOutfit"])
+        self.assertFalse(states["outfit_history"]["state"]["opensTodayOutfit"])
+        self.assertEqual(states["style"]["state"]["featuredLookMode"], "style")
+        self.assertEqual(states["packing"]["state"]["featuredLookMode"], "packing")
 
     def test_frontend_appearance_sync_is_session_scoped(self) -> None:
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

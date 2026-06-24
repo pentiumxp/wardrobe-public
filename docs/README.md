@@ -9,6 +9,8 @@ task.
 
 - `ARCHITECTURE.md`: durable boundaries between SQLite, Program API, Web UI,
   Wardrobe MCP, and Hermes Mobile embedded plugin hosting.
+- `WARDROBE_PRODUCT_REALITY.md`: product thesis, core journey completion
+  states, failure states, and journey-to-test evidence.
 - `MODULES/hermes-plugin.md`: the embedded-app plugin contract.
 - `TEST_MATRIX.md`: harness requirements for plugin, MCP, resources, PWA,
   session, visual, and deployment behavior.

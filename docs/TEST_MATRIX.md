@@ -30,6 +30,29 @@ Expected coverage:
   endpoints return `410 native_ai_removed`, and model-facing wardrobe service is
   provided by Hermes Mobile through the mounted `wardrobe` MCP toolset.
 
+## Product Journey Harness
+
+`docs/WARDROBE_PRODUCT_REALITY.md` is the durable product journey contract.
+Focused tests must map each core journey to executable route, DOM, and API/state
+evidence:
+
+- `inventory-item-photo-lifecycle`: verifies the inventory route, add-item
+  create panel, item search/input surface, photo template/lightbox controls, and
+  item/photo Program API endpoint declarations.
+- `today-outfit-capture`: verifies `today` resolves to
+  `#outfits?mode=today`, sets `opensTodayOutfit`, and maps to the outfits tab
+  and today capture button/state handler.
+- `styling-reference`: verifies `style` resolves to
+  `#featured-looks?mode=style`, maps to the featured-looks tab, and preserves a
+  visible `data-plugin-action-mode` context.
+- `packing-reference`: verifies `packing` resolves to
+  `#featured-looks?mode=packing`, maps to the featured-looks tab, and preserves
+  a visible `data-plugin-action-mode` context.
+
+Action-route assertions are surface evidence. They are not sufficient for Deep
+Product Reality closure unless the same test or harness also verifies the
+journey's visible destination/state and relevant data boundary.
+
 ## Manifest Harness
 
 - `GET /api/v1/hermes/plugin/manifest` returns `id=wardrobe`.
