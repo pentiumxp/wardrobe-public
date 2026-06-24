@@ -4530,6 +4530,20 @@ body.mobile .photo-lightbox-nav.next {
   font-size: 14px;
 }
 
+.plugin-action-context {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 100%;
+  min-width: 0;
+  color: var(--text);
+}
+
+.plugin-action-context span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .featured-look-grid {
   display: grid;
   gap: 16px;

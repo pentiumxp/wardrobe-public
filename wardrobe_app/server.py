@@ -242,7 +242,7 @@ DEFAULT_AI_PROMPTS = {
 
 
 def _web_asset_version() -> str:
-    asset_names = ("index.html", "app.js", "styles.css")
+    asset_names = ("index.html", "plugin-action-routes.js", "app.js", "styles.css")
     parts: list[str] = []
     for name in asset_names:
         path = WEB_DIR / name
@@ -1133,12 +1133,6 @@ def _api_scope_allowed(scopes: set[str], required_scope: str) -> bool:
     return bool(resource and action and f"{resource}:*" in scopes)
 
 
-def _api_owner_token_scope_upgrade_allowed(required_scope: str, scopes: set[str]) -> bool:
-    if required_scope not in {"sync:read", "items:write"}:
-        return False
-    return {"items:read", "history:write"}.issubset(scopes)
-
-
 def _api_context_has_scope(context: dict, scope: str) -> bool:
     return _api_scope_allowed(set(context.get("scopes") or []), scope)
 
@@ -1179,25 +1173,9 @@ def _api_token_context(conn: sqlite3.Connection, authorization_header: str, requ
         except ValueError:
             return None, {"error": "token_invalid_expiry", "message": "Token expiry is invalid."}, 401
     scopes = _api_scopes(row["scopes_json"])
-    token_changed = False
     if not _api_scope_allowed(scopes, required_scope):
-        if _api_owner_token_scope_upgrade_allowed(required_scope, scopes):
-            scopes.add("sync:read")
-            scopes.add("items:write")
-            conn.execute(
-                """
-                UPDATE api_tokens
-                SET scopes_json = ?
-                WHERE id = ?
-                """,
-                (json.dumps(sorted(scopes), ensure_ascii=False, sort_keys=True), int(row["id"])),
-            )
-            token_changed = True
-        else:
-            return None, {"error": "forbidden_scope", "message": f"Missing scope: {required_scope}"}, 403
-    if token_changed:
-        conn.commit()
-    elif _api_should_touch_token(required_scope) and _timestamp_older_than(row["last_used_at"], API_TOKEN_TOUCH_INTERVAL_SECONDS):
+        return None, {"error": "forbidden_scope", "message": f"Missing scope: {required_scope}"}, 403
+    if _api_should_touch_token(required_scope) and _timestamp_older_than(row["last_used_at"], API_TOKEN_TOUCH_INTERVAL_SECONDS):
         conn.execute("UPDATE api_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?", (int(row["id"]),))
         conn.commit()
     return {
@@ -1247,17 +1225,8 @@ def _api_access_key_row_for_token(conn: sqlite3.Connection, token: str, owner: s
     scopes = _api_scopes(row["scopes_json"])
     required_scopes = set(_api_doc_token_scopes())
     if not required_scopes.issubset(scopes):
-        upgraded_scopes = sorted(scopes | required_scopes)
-        conn.execute(
-            """
-            UPDATE api_tokens
-            SET scopes_json = ?
-            WHERE id = ?
-            """,
-            (json.dumps(upgraded_scopes, ensure_ascii=False, sort_keys=True), int(row["id"])),
-        )
-        conn.commit()
-        row = conn.execute("SELECT * FROM api_tokens WHERE id = ?", (int(row["id"]),)).fetchone()
+        missing = ",".join(sorted(required_scopes - scopes))
+        raise ValueError(f"owner_api_access_key_missing_required_scope:{missing}")
     return row
 
 

@@ -1,7 +1,7 @@
 # Home AI Platform Contract Pointer
 
-Last updated: 2026-06-11.
-Home AI platform contract version: `20260618-v4`.
+Last updated: 2026-06-24.
+Home AI platform contract version: `20260623-v5`.
 
 ## Scope
 
@@ -15,15 +15,26 @@ Home AI production is Mac Studio.
 Read these Home AI docs before changing deployment, MCP tools, mobile visual
 behavior, or cross-plugin reference behavior:
 
-- `C:\Users\xuxin\Documents\Agent\docs\PLATFORM_CONTRACTS\plugin-workspace-platform-contract.md`
-- `C:\Users\xuxin\Documents\Agent\docs\PLATFORM_CONTRACTS\plugin-mobile-ui-visual-contract.md`
-- `C:\Users\xuxin\Documents\Agent\docs\RUNBOOKS\macos-production-access.md`
-- `C:\Users\xuxin\Documents\Agent\docs\RUNBOOKS\mcp-tool-upgrade-closure.md`
-- `C:\Users\xuxin\Documents\Agent\docs\RUNBOOKS\macos-ios-simulator-appium.md`
-- `C:\Users\xuxin\Documents\Agent\docs\MODULES\ai-operations-control-plane.md`
-- `C:\Users\xuxin\Documents\Agent\docs\IMPLEMENTATION_NOTES\ai-operations-control-plane.md`
-- `C:\Users\xuxin\Documents\Agent\docs\IMPLEMENTATION_NOTES\reference-memory-graph-v1.md`
-- `C:\Users\xuxin\Documents\Agent\docs\IMPLEMENTATION_NOTES\reference-memory-graph-harness-plan.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/plugin-workspace-platform-contract.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/plugin-mobile-ui-visual-contract.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/macos-dev-to-production-deployment-contract.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/root-cause-architecture-contract.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/fallback-governance-contract.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/fallback-registry.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/macos-production-access.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/mcp-tool-upgrade-closure.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/macos-ios-simulator-appium.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/MODULES/ai-operations-control-plane.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/ai-operations-control-plane.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/reference-memory-graph-v1.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/reference-memory-graph-harness-plan.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/plugin-topic-directory-claims.md`
+
+For non-trivial plugin bugfix, deployment, MCP, schema, or provisioning work,
+follow the central root-cause architecture contract before fixing. Any fallback
+must follow the central fallback governance contract and be recorded or linked
+through the central fallback registry when it is more than a one-off diagnostic
+mitigation.
 
 ## Plugin-Local Facts
 

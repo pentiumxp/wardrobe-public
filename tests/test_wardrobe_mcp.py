@@ -13,6 +13,7 @@ from wardrobe_app.wardrobe_mcp import (
     McpStdioServer,
     WardrobeMcpError,
     WardrobeMcpService,
+    build_arg_parser,
 )
 from wardrobe_app import program_api_sync
 
@@ -765,7 +766,6 @@ class WardrobeMcpTests(unittest.TestCase):
     def test_scoped_server_rejects_workspace_override(self) -> None:
         service = WardrobeMcpService(
             default_workspace=str(self.workspace),
-            allow_workspace_override=False,
         )
 
         result = service.call_tool(
@@ -778,6 +778,40 @@ class WardrobeMcpTests(unittest.TestCase):
             result["structuredContent"]["message"],
             "workspace_override_not_allowed",
         )
+
+    def test_workspace_override_requires_explicit_opt_in(self) -> None:
+        fake = FakeWardrobeApiClient(
+            None,
+            json_responses={
+                ("GET", "/api/v1/items/CODE-1"): ApiResult(200, {}, {"item": {"code": "CODE-1"}}),
+            },
+        )
+        service = WardrobeMcpService(
+            default_workspace=str(self.workspace),
+            client_factory=lambda runtime: fake,
+            allow_workspace_override=True,
+        )
+
+        result = service.call_tool(
+            "wardrobe.get_item",
+            {"workspace": str(self.workspace), "code": "CODE-1"},
+        )
+
+        self.assertFalse(result["isError"])
+        self.assertEqual(result["structuredContent"]["item"]["code"], "CODE-1")
+
+    def test_cli_workspace_override_default_is_fail_closed(self) -> None:
+        parser = build_arg_parser()
+
+        scoped = parser.parse_args(["--workspace", str(self.workspace)])
+        diagnostic = parser.parse_args([
+            "--workspace",
+            str(self.workspace),
+            "--allow-workspace-override",
+        ])
+
+        self.assertFalse(scoped.allow_workspace_override)
+        self.assertTrue(diagnostic.allow_workspace_override)
 
 
 if __name__ == "__main__":

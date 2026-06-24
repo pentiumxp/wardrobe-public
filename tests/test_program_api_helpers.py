@@ -277,7 +277,7 @@ class ProgramApiHelperTests(unittest.TestCase):
         finally:
             server.AUTH_MAX_SESSIONS_PER_USER = old_limit
 
-    def test_api_token_context_upgrades_legacy_owner_token_for_sync_read(self) -> None:
+    def test_api_token_context_rejects_legacy_owner_token_for_sync_read(self) -> None:
         token = "wd_live_" + "c" * 40
         self._insert_token(token, "OwnerA", ["history:write", "items:read"])
 
@@ -287,18 +287,17 @@ class ProgramApiHelperTests(unittest.TestCase):
             "sync:read",
         )
 
-        self.assertEqual(status, 200)
-        self.assertIsNone(error_payload)
-        self.assertIsNotNone(context)
-        self.assertIn("sync:read", context["scopes"])
+        self.assertEqual(status, 403)
+        self.assertIsNone(context)
+        self.assertEqual(error_payload["error"], "forbidden_scope")
         scopes_json = self.conn.execute(
             "SELECT scopes_json FROM api_tokens WHERE owner = ?",
             ("OwnerA",),
         ).fetchone()["scopes_json"]
-        self.assertIn("sync:read", json.loads(scopes_json))
-        self.assertIn("items:write", json.loads(scopes_json))
+        self.assertNotIn("sync:read", json.loads(scopes_json))
+        self.assertNotIn("items:write", json.loads(scopes_json))
 
-    def test_api_token_context_upgrades_legacy_owner_token_for_items_write(self) -> None:
+    def test_api_token_context_rejects_legacy_owner_token_for_items_write(self) -> None:
         token = "wd_live_" + "d" * 40
         self._insert_token(token, "OwnerA", ["history:write", "items:read"])
 
@@ -308,15 +307,14 @@ class ProgramApiHelperTests(unittest.TestCase):
             "items:write",
         )
 
-        self.assertEqual(status, 200)
-        self.assertIsNone(error_payload)
-        self.assertIsNotNone(context)
-        self.assertIn("items:write", context["scopes"])
+        self.assertEqual(status, 403)
+        self.assertIsNone(context)
+        self.assertEqual(error_payload["error"], "forbidden_scope")
         scopes_json = self.conn.execute(
             "SELECT scopes_json FROM api_tokens WHERE owner = ?",
             ("OwnerA",),
         ).fetchone()["scopes_json"]
-        self.assertIn("items:write", json.loads(scopes_json))
+        self.assertNotIn("items:write", json.loads(scopes_json))
 
     def test_history_write_any_can_only_use_target_owner_items(self) -> None:
         self._insert_item("TARGET-001", "TargetOwner")
@@ -946,7 +944,7 @@ class ProgramApiHelperTests(unittest.TestCase):
         self.assertEqual(photos[0]["content_type"], "image/jpeg")
         self.assertEqual(photos[0]["content"], b"\xff\xd8\xff\xd9")
 
-    def test_existing_owner_access_key_is_upgraded_with_sync_scope(self) -> None:
+    def test_existing_owner_access_key_missing_doc_scopes_fails_closed(self) -> None:
         token = "wd_live_" + "b" * 40
         self._insert_token(token, "OwnerA", ["history:write", "items:read"])
         previous_secret_dir = server.API_TOKEN_SECRET_DIR
@@ -954,7 +952,8 @@ class ProgramApiHelperTests(unittest.TestCase):
             server.API_TOKEN_SECRET_DIR = Path(temp_dir)
             server._api_access_key_secret_path("OwnerA").write_text(token + "\n", encoding="utf-8")
             try:
-                self.assertEqual(server._ensure_owner_api_access_key(self.conn, "OwnerA"), token)
+                with self.assertRaisesRegex(ValueError, "owner_api_access_key_missing_required_scope"):
+                    server._ensure_owner_api_access_key(self.conn, "OwnerA")
             finally:
                 server.API_TOKEN_SECRET_DIR = previous_secret_dir
 
@@ -962,8 +961,8 @@ class ProgramApiHelperTests(unittest.TestCase):
             "SELECT scopes_json FROM api_tokens WHERE owner = ?",
             ("OwnerA",),
         ).fetchone()["scopes_json"]
-        self.assertIn("sync:read", json.loads(scopes_json))
-        self.assertIn("items:write", json.loads(scopes_json))
+        self.assertNotIn("sync:read", json.loads(scopes_json))
+        self.assertNotIn("items:write", json.loads(scopes_json))
 
     def test_hermes_plugin_manifest_declares_embed_and_registration(self) -> None:
         manifest = server._hermes_plugin_manifest_payload(

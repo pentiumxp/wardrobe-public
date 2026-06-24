@@ -29,6 +29,10 @@ not rely on the model passing a different `workspace` argument at tool-call time
 This keeps each Gateway profile bound to its own `.hermes-wardrobe/access-key.txt`
 and `.hermes-cache`.
 
+The MCP runtime is fail-closed by default: tool-call `workspace` arguments are
+rejected unless they match the configured `--workspace`, and arbitrary workspace
+switching requires the explicit diagnostic flag `--allow-workspace-override`.
+
 Current Hermes Mobile runtime install path:
 
 ```text

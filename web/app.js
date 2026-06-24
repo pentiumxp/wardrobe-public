@@ -25,6 +25,7 @@ const state = {
   relatedOutfitYear: "",
   relatedOutfitMonth: "",
   selectedRelatedFeaturedLookId: "",
+  featuredLookActionMode: "",
   outfitSelectedOwner: "",
   outfitPhotosOnly: false,
   featuredLookSelectedOwner: "",
@@ -190,13 +191,14 @@ const PLUGIN_VIEWPORT_MESSAGE_TYPE = "hermes.plugin.viewport";
 const PLUGIN_VIEWPORT_MESSAGE_TTL_MS = 8000;
 const PLUGIN_KEYBOARD_SHRINK_THRESHOLD_PX = 80;
 const PLUGIN_FOCUSED_FIELD_MARGIN_PX = 14;
-const PLUGIN_ACTION_ROUTE_HASH = Object.freeze({
-  style: "#featured-looks",
-  today: "#outfits",
-  add_item: "#inventory",
+const PLUGIN_ACTION_ROUTE_CONTRACT = window.WardrobePluginActionRoutes || {};
+const PLUGIN_ACTION_ROUTE_HASH = Object.freeze(PLUGIN_ACTION_ROUTE_CONTRACT.routes || {
+  style: "#featured-looks?mode=style",
+  today: "#outfits?mode=today",
+  add_item: "#inventory?mode=add_item",
   inventory: "#inventory",
-  outfit_history: "#outfits",
-  packing: "#featured-looks",
+  outfit_history: "#outfits?mode=history",
+  packing: "#featured-looks?mode=packing",
 });
 let lastPluginRefreshRequiredAt = 0;
 let initialPluginActionRoute = "";
@@ -390,6 +392,24 @@ function applyInitialPluginActionHash() {
   if (!currentHash || currentHash === "#inventory") {
     window.location.hash = targetHash;
   }
+}
+
+function pluginActionStateForHash(rawHash = window.location.hash) {
+  if (typeof PLUGIN_ACTION_ROUTE_CONTRACT.actionStateForHash === "function") {
+    return PLUGIN_ACTION_ROUTE_CONTRACT.actionStateForHash(rawHash);
+  }
+  const cleanHash = String(rawHash || "").replace(/^#/, "");
+  const [tab = "", rawQuery = ""] = cleanHash.split("?");
+  const params = new URLSearchParams(rawQuery);
+  const mode = String(params.get("mode") || "").trim().toLowerCase();
+  const normalizedTab = tab === "recommend" ? "featured-looks" : tab;
+  return {
+    tab: normalizedTab || "inventory",
+    mode,
+    opensCreateItem: normalizedTab === "inventory" && mode === "add_item",
+    opensTodayOutfit: normalizedTab === "outfits" && mode === "today",
+    featuredLookMode: normalizedTab === "featured-looks" && (mode === "style" || mode === "packing") ? mode : "",
+  };
 }
 
 function sameOriginApiRequest(input) {
@@ -5540,9 +5560,11 @@ async function handleRoute() {
   const rawHash = window.location.hash.replace(/^#/, "");
   const [hash, hashQuery = ""] = rawHash.split("?");
   const hashParams = new URLSearchParams(hashQuery);
+  const pluginActionState = pluginActionStateForHash(window.location.hash);
   if (!hash) {
     clearRelatedOutfitFilter();
     clearRelatedFeaturedLookFilter();
+    state.featuredLookActionMode = "";
     setTab("inventory");
     setSidebarOpen(false);
     return;
@@ -5573,6 +5595,9 @@ async function handleRoute() {
     if (!state.outfits.length) {
       await refreshOutfits();
     }
+    if (pluginActionState.opensTodayOutfit && !state.relatedOutfitItemId) {
+      state.selectedOutfitDate = today;
+    }
   } else {
     clearRelatedOutfitFilter();
     state.relatedOutfitEntries = [];
@@ -5580,6 +5605,7 @@ async function handleRoute() {
   if (hash === "featured-looks") {
     const relatedItemId = Number(hashParams.get("item") || "0");
     const targetLookId = String(hashParams.get("look") || "").trim();
+    state.featuredLookActionMode = pluginActionState.featuredLookMode || "";
     state.relatedFeaturedLookItemId = Number.isFinite(relatedItemId) && relatedItemId > 0 ? relatedItemId : null;
     if (state.relatedFeaturedLookItemId) {
       await ensureKnownItemLoaded(state.relatedFeaturedLookItemId);
@@ -5605,6 +5631,7 @@ async function handleRoute() {
   } else {
     clearRelatedFeaturedLookFilter();
     state.relatedFeaturedLookEntries = [];
+    state.featuredLookActionMode = "";
   }
   if (["dashboard", "wear-stats", "maintenance-planning", "inventory", "watch-collection", "item-detail", "outfits", "featured-looks"].includes(hash)) {
     setTab(hash);
@@ -7362,6 +7389,26 @@ function featuredLookSlotLabel(slot) {
   }[slot] || slot;
 }
 
+function featuredLookActionContextHtml(mode) {
+  const context = {
+    style: {
+      title: "配衣服参考",
+      body: "展示精选套装作为搭配参考，保留搜索与套装明细。",
+    },
+    packing: {
+      title: "出行打包参考",
+      body: "展示精选套装作为打包核对参考，保留搜索与套装明细。",
+    },
+  }[mode];
+  if (!context) return "";
+  return `
+    <div class="plugin-action-context" data-plugin-action-mode="${escapeHtml(mode)}">
+      <strong>${escapeHtml(context.title)}</strong>
+      <span>${escapeHtml(context.body)}</span>
+    </div>
+  `;
+}
+
 function renderFeaturedLooks() {
   const host = $("featured-looks-list");
   const summaryHost = $("featured-looks-summary");
@@ -7372,6 +7419,7 @@ function renderFeaturedLooks() {
   const relatedItemId = Number(state.relatedFeaturedLookItemId || 0);
   const relatedItem = findKnownItemById(relatedItemId);
   const routeLookId = currentFeaturedLookRouteId();
+  const actionContextHtml = featuredLookActionContextHtml(state.featuredLookActionMode);
   const sortLooksByCreatedAtDesc = (entries) => [...(entries || [])].sort((left, right) => {
     const leftCreated = String(left?.created_at || "");
     const rightCreated = String(right?.created_at || "");
@@ -7381,7 +7429,12 @@ function renderFeaturedLooks() {
     return Number(right?.id || 0) - Number(left?.id || 0);
   });
   if (!state.featuredLooks.length) {
-    summaryHost.innerHTML = `<div class="card"><div class="list-item">当前没有可展示的精选套装。</div></div>`;
+    summaryHost.innerHTML = `
+      <div class="card">
+        ${actionContextHtml}
+        <div class="list-item">当前没有可展示的精选套装。</div>
+      </div>
+    `;
     host.innerHTML = "";
     return;
   }
@@ -7427,6 +7480,7 @@ function renderFeaturedLooks() {
   if (!filteredLooks.length) {
     summaryHost.innerHTML = `
       <div class="card">
+        ${actionContextHtml}
         ${relatedItem ? `
           <div class="related-filter-inline">
             <strong>套装筛选</strong>
@@ -7454,6 +7508,7 @@ function renderFeaturedLooks() {
   }
   summaryHost.innerHTML = `
     <div class="card featured-looks-meta">
+      ${actionContextHtml}
       ${relatedItem ? `
         <div class="related-filter-inline">
           <strong>套装筛选</strong>
@@ -7806,6 +7861,19 @@ function openCreateItemPanel() {
   });
 }
 
+function openTodayOutfitAction() {
+  clearRelatedOutfitFilter();
+  state.outfitSelectedOwner = loggedInOwner() || state.outfitSelectedOwner;
+  state.selectedOutfitDate = today;
+  setTab("outfits");
+  if (todayOutfitSummary(loggedInOwner())) {
+    closeOutfitCreate();
+  } else {
+    openOutfitCreate();
+  }
+  renderSelectedOutfit();
+}
+
 function applyInitialPluginActionAfterBootstrap() {
   if (!initialPluginActionRoute || initialPluginActionApplied) return;
   initialPluginActionApplied = true;
@@ -7813,6 +7881,12 @@ function applyInitialPluginActionAfterBootstrap() {
     state.createItemKind = "wardrobe";
     setTab("inventory");
     openCreateItemPanel();
+  } else if (initialPluginActionRoute === "today") {
+    openTodayOutfitAction();
+  } else if (initialPluginActionRoute === "style" || initialPluginActionRoute === "packing") {
+    state.featuredLookActionMode = initialPluginActionRoute;
+    setTab("featured-looks");
+    renderFeaturedLooks();
   }
 }
 

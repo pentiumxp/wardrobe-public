@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -133,14 +134,20 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
 
     def test_frontend_embedded_contract_messages_are_declared(self) -> None:
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        index_html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 
         self.assertIn('params.get("pluginRoute")', app_js)
         self.assertIn('params.get("pluginActionId")', app_js)
         self.assertIn("PLUGIN_ACTION_ROUTE_HASH", app_js)
+        self.assertIn("pluginActionStateForHash", app_js)
+        self.assertIn("openTodayOutfitAction", app_js)
+        self.assertIn("featuredLookActionMode", app_js)
         self.assertIn("applyInitialPluginActionHash", app_js)
         self.assertIn("applyInitialPluginActionAfterBootstrap", app_js)
         self.assertIn('initialPluginActionRoute === "add_item"', app_js)
         self.assertIn("openCreateItemPanel()", app_js)
+        self.assertIn('initialPluginActionRoute === "today"', app_js)
+        self.assertIn("openTodayOutfitAction()", app_js)
         self.assertIn('"wardrobe.plugin.navigation"', app_js)
         self.assertIn('"hermes.plugin.back"', app_js)
         self.assertIn('"wardrobe.plugin.back_result"', app_js)
@@ -165,6 +172,52 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         self.assertIn("retryHermesPluginReconnect", app_js)
         self.assertIn("pluginReconnectBootstrapping", app_js)
         self.assertIn("await bootstrapAuthenticatedApp()", app_js)
+        self.assertLess(
+            index_html.index("plugin-action-routes.js"),
+            index_html.index("app.js"),
+        )
+
+    def test_frontend_plugin_action_routes_resolve_visible_states(self) -> None:
+        script = """
+const contract = require("./web/plugin-action-routes.js");
+const actions = ["add_item", "today", "style", "packing", "inventory", "outfit_history"];
+const states = Object.fromEntries(actions.map((action) => {
+  const route = contract.routeForPluginAction(action);
+  return [action, { route, state: contract.actionStateForHash(route) }];
+}));
+console.log(JSON.stringify(states));
+"""
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        states = json.loads(result.stdout)
+
+        self.assertEqual(states["add_item"]["route"], "#inventory?mode=add_item")
+        self.assertEqual(states["add_item"]["state"]["tab"], "inventory")
+        self.assertTrue(states["add_item"]["state"]["opensCreateItem"])
+
+        self.assertEqual(states["today"]["route"], "#outfits?mode=today")
+        self.assertEqual(states["today"]["state"]["tab"], "outfits")
+        self.assertTrue(states["today"]["state"]["opensTodayOutfit"])
+
+        self.assertEqual(states["style"]["route"], "#featured-looks?mode=style")
+        self.assertEqual(states["style"]["state"]["tab"], "featured-looks")
+        self.assertEqual(states["style"]["state"]["featuredLookMode"], "style")
+
+        self.assertEqual(states["packing"]["route"], "#featured-looks?mode=packing")
+        self.assertEqual(states["packing"]["state"]["tab"], "featured-looks")
+        self.assertEqual(states["packing"]["state"]["featuredLookMode"], "packing")
+
+        self.assertEqual(states["inventory"]["route"], "#inventory")
+        self.assertEqual(states["inventory"]["state"]["tab"], "inventory")
+
+        self.assertEqual(states["outfit_history"]["route"], "#outfits?mode=history")
+        self.assertEqual(states["outfit_history"]["state"]["tab"], "outfits")
+        self.assertFalse(states["outfit_history"]["state"]["opensTodayOutfit"])
 
     def test_frontend_appearance_sync_is_session_scoped(self) -> None:
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -226,8 +279,9 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
 
         self.assertIn('class="tabs bottom-tabs"', index_html)
         self.assertIn('aria-label="主页面导航"', index_html)
-        self.assertIn("styles.css?v=20260620appdialog", index_html)
-        self.assertIn("app.js?v=20260620appdialog", index_html)
+        self.assertIn("styles.css?v=20260624actionroutes", index_html)
+        self.assertIn("plugin-action-routes.js?v=20260624actionroutes", index_html)
+        self.assertIn("app.js?v=20260624actionroutes", index_html)
         self.assertIn('CLIENT_BUILD_VERSION = "20260608hostviewport"', app_js)
         self.assertIn(".bottom-tabs", styles_css)
         self.assertIn("body.secondary-route .bottom-tabs", styles_css)
@@ -312,7 +366,7 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         self.assertNotIn("/api/ai-prompts", app_js)
         self.assertNotIn("/ai-review", app_js)
         self.assertNotIn("/ai-analysis", app_js)
-        self.assertIn("20260620appdialog", index_html)
+        self.assertIn("20260624actionroutes", index_html)
 
     def test_frontend_uses_in_app_dialogs_not_browser_popups(self) -> None:
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

@@ -341,7 +341,7 @@ class WardrobeMcpService:
         self,
         default_workspace: str | None = None,
         client_factory: ClientFactory | None = None,
-        allow_workspace_override: bool = True,
+        allow_workspace_override: bool = False,
     ):
         self.default_workspace = default_workspace
         self.client_factory = client_factory or (lambda runtime: WardrobeApiClient(runtime))
@@ -556,7 +556,9 @@ class WardrobeMcpService:
     def _runtime_and_client(self, args: dict[str, Any]) -> tuple[WorkspaceRuntime, Any]:
         workspace_arg = args.get("workspace")
         workspace = str(workspace_arg).strip() if isinstance(workspace_arg, str) else ""
-        if workspace and self.default_workspace and not self.allow_workspace_override:
+        if workspace and not self.allow_workspace_override:
+            if not self.default_workspace:
+                raise WardrobeMcpError("workspace_override_not_allowed")
             requested = Path(workspace).expanduser().resolve()
             allowed = Path(self.default_workspace).expanduser().resolve()
             if requested != allowed:
@@ -1160,7 +1162,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Reject tool calls that pass a workspace different from --workspace.",
     )
-    parser.set_defaults(allow_workspace_override=True)
+    parser.set_defaults(allow_workspace_override=False)
     return parser
 
 
