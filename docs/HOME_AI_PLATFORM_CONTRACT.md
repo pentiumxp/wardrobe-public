@@ -1,6 +1,6 @@
 # Home AI Platform Contract Pointer
 
-Last updated: 2026-06-24.
+Last updated: 2026-06-25.
 Home AI platform contract version: `20260623-v5`.
 
 ## Scope
@@ -20,7 +20,9 @@ behavior, or cross-plugin reference behavior:
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/macos-dev-to-production-deployment-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/root-cause-architecture-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/fallback-governance-contract.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/github-shared-source-account-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/fallback-registry.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/github-shared-source-account.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/macos-production-access.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/mcp-tool-upgrade-closure.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/macos-ios-simulator-appium.md`
@@ -62,6 +64,8 @@ mitigation.
 | `ios_live_debug_available` | `yes`; use Home AI `npm run ios:pwa:debug` for interactive embedded iOS PWA reproduction, with one Simulator/live-debug-port/WDA-port/MJPEG-port lane per concurrent plugin debug session. |
 | `ios_visual_harness_command` | `cd /Users/hermes-dev/HermesMobileDev/app && npm run ios:pwa:visual -- --scenario embedded-plugin-shell --plugin-id wardrobe --debug-url http://127.0.0.1:19073/` |
 | `plugin_manifest_actions_status` | `declared`; Wardrobe exposes manifest `actions` for host Dock `常用`, long-press menus, and search. |
+| `github_shared_source_account_status` | `adopted`; writable source remote `origin` uses SSH alias `github.com-homeai-ssa` for `pentiumxp/wardrob.git`; private key remains a local operator secret outside this repo. |
+| `github_shared_source_account_helper` | `/Users/hermes-dev/HermesMobileDev/app/scripts/github-shared-source-account.js` |
 
 ## Required Local Validation
 
