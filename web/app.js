@@ -160,8 +160,10 @@ const state = {
   installStatusText: "",
   installRetryTimer: null,
   autoImportTimer: null,
+  loadedAppVersion: "",
   appUpdateAvailable: false,
   appUpdateVersion: "",
+  photoPickerActiveUntil: 0,
   pluginReturnHash: "#inventory",
 };
 
@@ -169,6 +171,8 @@ const LAST_LOGIN_USER_COOKIE = "wardrobe_last_user";
 const CLIENT_BUILD_VERSION = "20260608hostviewport";
 const APP_VERSION_KEY = "wardrobe_app_version";
 const APP_VERSION_POLL_MS = 60000;
+const PHOTO_PICKER_APP_VERSION_SUPPRESS_MS = 120000;
+const PHOTO_PICKER_APP_VERSION_SETTLE_MS = 1500;
 const AUTH_PASSWORD_MIN_LENGTH = 8;
 const AUTH_PASSWORD_MAX_LENGTH = 24;
 const PLUGIN_SESSION_STORAGE_KEY = "wardrobe_plugin_session";
@@ -5991,13 +5995,22 @@ function renderExpandableText(label, text, className = "") {
   `;
 }
 
-function currentLoadedAppVersion() {
+function currentUrlAppVersion() {
   try {
     const url = new URL(window.location.href);
-    return String(url.searchParams.get("_appv") || "").trim() || CLIENT_BUILD_VERSION;
+    return String(url.searchParams.get("_appv") || "").trim();
   } catch (error) {
-    return CLIENT_BUILD_VERSION;
+    return "";
   }
+}
+
+function currentLoadedAppVersion() {
+  return currentUrlAppVersion() || state.loadedAppVersion || CLIENT_BUILD_VERSION;
+}
+
+function markLoadedAppVersion(version) {
+  if (state.loadedAppVersion) return;
+  state.loadedAppVersion = currentUrlAppVersion() || version || CLIENT_BUILD_VERSION;
 }
 
 function renderAppUpdateBanner() {
@@ -8298,8 +8311,10 @@ function reloadWithFreshVersion(version) {
 
 async function checkForAppUpdate({ reloadIfChanged = true } = {}) {
   try {
+    if (shouldDeferAppVersionCheckForPhotoPicker()) return;
     const version = await fetchAppVersion();
     if (!version) return;
+    markLoadedAppVersion(version);
     const previous = localStorage.getItem(APP_VERSION_KEY);
     const activeVersion = currentLoadedAppVersion();
     if (!previous) {
@@ -8332,6 +8347,24 @@ async function checkForAppUpdate({ reloadIfChanged = true } = {}) {
 
 const PHOTO_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
 const PHOTO_UPLOAD_MAX_FILES = 8;
+
+function markPhotoPickerInteractionActive() {
+  state.photoPickerActiveUntil = Date.now() + PHOTO_PICKER_APP_VERSION_SUPPRESS_MS;
+}
+
+function clearPhotoPickerInteractionSoon() {
+  const activeUntil = state.photoPickerActiveUntil;
+  window.setTimeout(() => {
+    if (state.photoPickerActiveUntil === activeUntil) {
+      state.photoPickerActiveUntil = 0;
+    }
+  }, PHOTO_PICKER_APP_VERSION_SETTLE_MS);
+}
+
+function shouldDeferAppVersionCheckForPhotoPicker() {
+  const activeUntil = Number(state.photoPickerActiveUntil || 0);
+  return activeUntil > Date.now();
+}
 
 async function refreshEntityPhotos(entityType, entityId) {
   if (entityType === "item") {
@@ -8692,6 +8725,16 @@ async function init() {
     await logout();
   });
 
+  const markPhotoPickerFromEvent = (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest(".entity-photo-input, .upload-btn")) {
+      markPhotoPickerInteractionActive();
+    }
+  };
+  document.addEventListener("pointerdown", markPhotoPickerFromEvent, true);
+  document.addEventListener("click", markPhotoPickerFromEvent, true);
+
   document.addEventListener("change", async (event) => {
     const input = event.target;
     if (input instanceof HTMLSelectElement && input.id === "login-username") {
@@ -8726,12 +8769,14 @@ async function init() {
     const entityId = Number(input.dataset.entityId || "");
     const files = input.files;
     if (!uploadUrl || !entityType || !entityId || !files?.length) return;
+    markPhotoPickerInteractionActive();
     try {
       await uploadSelectedEntityPhotos(uploadUrl, entityType, entityId, files);
     } catch (error) {
       await showAppAlert(error?.message || "图片上传失败。");
     } finally {
       input.value = "";
+      clearPhotoPickerInteractionSoon();
     }
   });
 

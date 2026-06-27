@@ -445,6 +445,23 @@ console.log(JSON.stringify(states));
         self.assertNotIn('`/api/photos/${photo.id}/content${suffix}`', app_js)
         self.assertIn('return `/media/${photo.file_name}`;', app_js)
 
+    def test_frontend_photo_picker_return_does_not_force_host_refresh(self) -> None:
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('loadedAppVersion: ""', app_js)
+        self.assertIn("photoPickerActiveUntil: 0", app_js)
+        self.assertIn("function currentUrlAppVersion()", app_js)
+        self.assertIn("return currentUrlAppVersion() || state.loadedAppVersion || CLIENT_BUILD_VERSION;", app_js)
+        self.assertIn("function markLoadedAppVersion(version)", app_js)
+        self.assertIn("state.loadedAppVersion = currentUrlAppVersion() || version || CLIENT_BUILD_VERSION;", app_js)
+        self.assertIn("PHOTO_PICKER_APP_VERSION_SUPPRESS_MS", app_js)
+        self.assertIn("function markPhotoPickerInteractionActive()", app_js)
+        self.assertIn("function shouldDeferAppVersionCheckForPhotoPicker()", app_js)
+        self.assertIn("if (shouldDeferAppVersionCheckForPhotoPicker()) return;", app_js)
+        self.assertIn('target.closest(".entity-photo-input, .upload-btn")', app_js)
+        self.assertIn('document.addEventListener("pointerdown", markPhotoPickerFromEvent, true)', app_js)
+        self.assertIn('document.addEventListener("click", markPhotoPickerFromEvent, true)', app_js)
+
     def test_frontend_native_ai_entrypoints_are_removed(self) -> None:
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         index_html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
