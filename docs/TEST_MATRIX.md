@@ -26,6 +26,9 @@ Expected coverage:
   resource URLs
 - no-photo products remain valid rows
 - MCP sync is resource-level and does not fetch all original images
+- MCP `outfit_wear_intent` prepares bounded recommendation metadata and
+  executes wear-history writes through dry-run, idempotency, explicit
+  confirmation, and readback verification
 - Wardrobe native AI service stays removed: prompt-editing and AI-review
   endpoints return `410 native_ai_removed`, and model-facing wardrobe service is
   provided by Hermes Mobile through the mounted `wardrobe` MCP toolset.
@@ -48,6 +51,10 @@ evidence:
 - `packing-reference`: verifies `packing` resolves to
   `#featured-looks?mode=packing`, maps to the featured-looks tab, and preserves
   a visible `data-plugin-action-mode` context.
+- `recommendation-to-wear-history`: verifies executable
+  `outfit_wear_intent` metadata only appears when role/code items are locked,
+  conflicts return `needs_confirmation`, confirmed writes use the stable
+  idempotency key, and success includes readback verification.
 
 Action-route assertions are surface evidence. They are not sufficient for Deep
 Product Reality closure unless the same test or harness also verifies the

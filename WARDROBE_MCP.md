@@ -80,7 +80,9 @@ After every MCP runtime/schema/path change, verify:
   `.hermes-wardrobe/access-key.txt` without printing key contents;
 - the active Mac Gateway/profile config contains `wardrobe` in `toolsets`,
   `platform_toolsets.api_server`, and `mcp_servers`;
-- direct MCP stdio discovery exposes `wardrobe.sync`;
+- direct MCP stdio discovery exposes `wardrobe.sync`,
+  `wardrobe.prepare_outfit_wear_intent`, and
+  `wardrobe.execute_outfit_wear_intent`;
 - selected production Gateway callable schema exposes the expected
   `mcp_wardrobe_*` tools.
 
@@ -321,6 +323,81 @@ Behavior:
 - `payload.items[].role` must use canonical outfit roles: `Inner`, `Middle`, `Outer`, `Bottom`, `Footwear`, `Accessory`, `Watch`. Do not send `Shoes` or `Pants`.
 - Uses Program API idempotency when `idempotency_key` is provided.
 - Does not create saved looks unless a documented saved-look endpoint exists.
+
+### `wardrobe.prepare_outfit_wear_intent`
+
+Build a structured `outfit_wear_intent` for Home AI recommendation messages.
+Use this only after the recommendation result has locked concrete item codes
+for every selected role.
+
+Input:
+
+```json
+{
+  "workspace": "optional owner wardrobe directory",
+  "workspace_id": "owner",
+  "principal_id": "owner",
+  "wear_date": "YYYY-MM-DD",
+  "timezone": "Asia/Shanghai",
+  "items": [{"role": "Outer", "code": "item code"}],
+  "source_message": {
+    "message_id": "bounded message id",
+    "thread_id": "bounded thread id"
+  },
+  "expires_at": "optional ISO timestamp"
+}
+```
+
+Behavior:
+
+- Returns `metadata_key: "outfit_wear_intent"` and an executable `intent`
+  only when every selected item has a non-empty `code` and every role is one of
+  `Inner`, `Middle`, `Outer`, `Bottom`, `Footwear`, `Accessory`, `Watch`.
+- The intent contains `principal_id`, `workspace_id`, `wear_date`, `timezone`,
+  `items`, bounded `source_message`, `idempotency_key`, and `expires_at`.
+- The `idempotency_key` is derived from plugin id, principal, workspace, wear
+  date, timezone, item role/code list, and bounded source message ids. Execute
+  rejects intents whose key no longer matches those fields.
+- Missing codes or invalid roles return `status: "not_executable"` and must
+  not render a one-click history-write button.
+- The intent is metadata for Home AI. It does not mutate history and does not
+  call a model.
+
+### `wardrobe.execute_outfit_wear_intent`
+
+Execute a prepared `outfit_wear_intent` deterministically.
+
+Input:
+
+```json
+{
+  "workspace": "optional owner wardrobe directory",
+  "workspace_id": "owner",
+  "principal_id": "owner",
+  "intent": {"type": "outfit_wear_intent"},
+  "confirm_replace": false,
+  "mode": "optional create_only | replace"
+}
+```
+
+Behavior:
+
+- Validates `type`, schema version, plugin id, principal, workspace, expiry,
+  item codes, canonical roles, and idempotency key before any write.
+- Calls `POST /api/v1/history/outfits` first with `dry_run: true`.
+- If the same owner/date already has an outfit, returns
+  `status: "needs_confirmation"` with `confirm_mode: "replace"` and does not
+  write.
+- `mode: "replace"` is only executable when the caller also sends explicit
+  `confirm_replace: true`.
+- After explicit confirmation, uses `mode: "replace"` and the same
+  `idempotency_key`, then reads back `wear_history` through the sync resource.
+- Success returns `status: "stored"`, `outfit_id`, `readback_verified: true`,
+  and `state_persistence.kind: "program_api_idempotency"`.
+- Expired, missing-code, principal mismatch, workspace mismatch, or unavailable
+  MCP/API/readback states are not executable. Home AI must keep those as
+  visible action errors instead of rerunning a model or silently falling back to
+  a generic write.
 
 ### `wardrobe.write_item`
 

@@ -119,6 +119,8 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         self.assertFalse(manifest["owner_binding"]["raw_key_returned_by_wardrobe"])
         self.assertIn("wardrobe.sync", manifest["mcp"]["required_tools"])
         self.assertIn("wardrobe.set_primary_photo", manifest["mcp"]["required_tools"])
+        self.assertIn("wardrobe.prepare_outfit_wear_intent", manifest["mcp"]["required_tools"])
+        self.assertIn("wardrobe.execute_outfit_wear_intent", manifest["mcp"]["required_tools"])
         for pattern in SECRET_PATTERNS:
             self.assertIsNone(pattern.search(manifest_text), pattern.pattern)
 

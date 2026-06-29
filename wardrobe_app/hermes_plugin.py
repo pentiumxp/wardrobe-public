@@ -171,6 +171,8 @@ def build_plugin_manifest(
                 "wardrobe.get_primary_thumbnail",
                 "wardrobe.set_primary_photo",
                 "wardrobe.write_history",
+                "wardrobe.prepare_outfit_wear_intent",
+                "wardrobe.execute_outfit_wear_intent",
                 "wardrobe.write_item",
                 "wardrobe.upload_photo",
             ],

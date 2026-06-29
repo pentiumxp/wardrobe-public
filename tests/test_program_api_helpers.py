@@ -986,6 +986,8 @@ class ProgramApiHelperTests(unittest.TestCase):
         self.assertEqual(manifest["program_api"]["plugin_launch"], "/api/v1/hermes/plugin/launch")
         self.assertFalse(manifest["owner_binding"]["raw_key_returned_by_wardrobe"])
         self.assertIn("wardrobe.sync", manifest["mcp"]["required_tools"])
+        self.assertIn("wardrobe.prepare_outfit_wear_intent", manifest["mcp"]["required_tools"])
+        self.assertIn("wardrobe.execute_outfit_wear_intent", manifest["mcp"]["required_tools"])
         self.assertEqual(manifest["navigation"]["state_event"], "wardrobe.plugin.navigation")
         self.assertEqual(manifest["navigation"]["back_event"], "hermes.plugin.back")
         self.assertEqual(manifest["navigation"]["back_result_event"], "wardrobe.plugin.back_result")

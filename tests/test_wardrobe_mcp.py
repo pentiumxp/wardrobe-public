@@ -26,7 +26,7 @@ class FakeWardrobeApiClient:
         self,
         runtime: Any,
         *,
-        json_responses: dict[tuple[str, str], ApiResult],
+        json_responses: dict[tuple[str, str], ApiResult | list[ApiResult]],
         binary_responses: dict[tuple[str, str], ApiResult] | None = None,
     ) -> None:
         self.runtime = runtime
@@ -40,6 +40,10 @@ class FakeWardrobeApiClient:
         response = self.json_responses.get((method, path))
         if response is None:
             raise AssertionError(f"unexpected_json_request:{method}:{path}")
+        if isinstance(response, list):
+            if not response:
+                raise AssertionError(f"unexpected_json_request:{method}:{path}:exhausted")
+            return response.pop(0)
         return response
 
     def request_binary(self, method: str, path: str, **kwargs: Any) -> ApiResult:
@@ -107,6 +111,25 @@ class WardrobeMcpTests(unittest.TestCase):
             name: data,
         }
 
+    def _ready_intent(self) -> dict[str, Any]:
+        fake = FakeWardrobeApiClient(None, json_responses={})
+        payload = self._service_with_client(fake).prepare_outfit_wear_intent(
+            {
+                "workspace_id": "owner",
+                "principal_id": "owner",
+                "wear_date": "2026-06-29",
+                "timezone": "Asia/Shanghai",
+                "items": [
+                    {"role": "Outer", "code": "OUT-001"},
+                    {"role": "Footwear", "code": "SHOE-001"},
+                ],
+                "source_message": {"message_id": "msg_1"},
+                "now": "2026-06-29T00:00:00Z",
+            }
+        )
+        self.assertEqual(fake.json_calls, [])
+        return payload["intent"]
+
     def test_tools_list_includes_core_contract(self) -> None:
         service = WardrobeMcpService(default_workspace=str(self.workspace))
         tool_names = {tool["name"] for tool in service.tools()}
@@ -116,6 +139,8 @@ class WardrobeMcpTests(unittest.TestCase):
         self.assertIn("wardrobe.get_primary_thumbnail", tool_names)
         self.assertIn("wardrobe.set_primary_photo", tool_names)
         self.assertIn("wardrobe.write_history", tool_names)
+        self.assertIn("wardrobe.prepare_outfit_wear_intent", tool_names)
+        self.assertIn("wardrobe.execute_outfit_wear_intent", tool_names)
         self.assertIn("wardrobe.stats_inventory", tool_names)
         self.assertIn("wardrobe.stats_data_quality", tool_names)
         search_tool = next(tool for tool in service.tools() if tool["name"] == "wardrobe.search_items")
@@ -125,6 +150,199 @@ class WardrobeMcpTests(unittest.TestCase):
         write_item_tool = next(tool for tool in service.tools() if tool["name"] == "wardrobe.write_item")
         self.assertIn("mode", write_item_tool["inputSchema"]["properties"])
         self.assertIn("Footwear", write_item_tool["inputSchema"]["properties"]["payload"]["description"])
+        intent_tool = next(tool for tool in service.tools() if tool["name"] == "wardrobe.prepare_outfit_wear_intent")
+        self.assertIn("source_message", intent_tool["inputSchema"]["properties"])
+
+    def test_prepare_outfit_wear_intent_returns_executable_metadata(self) -> None:
+        fake = FakeWardrobeApiClient(None, json_responses={})
+
+        result = self._service_with_client(fake).call_tool(
+            "wardrobe.prepare_outfit_wear_intent",
+            {
+                "workspace_id": "owner",
+                "principal_id": "owner",
+                "wear_date": "2026-06-29",
+                "timezone": "Asia/Shanghai",
+                "items": [
+                    {"role": "Outer", "code": "OUT-001"},
+                    {"role": "Footwear", "code": "SHOE-001"},
+                ],
+                "source_message": {"message_id": "msg_1", "thread_id": "thread_1"},
+                "now": "2026-06-29T00:00:00Z",
+            },
+        )
+        payload = result["structuredContent"]
+        intent = payload["intent"]
+
+        self.assertFalse(result["isError"])
+        self.assertTrue(payload["executable"])
+        self.assertEqual(payload["metadata_key"], "outfit_wear_intent")
+        self.assertEqual(intent["type"], "outfit_wear_intent")
+        self.assertEqual(intent["workspace_id"], "owner")
+        self.assertEqual(intent["wear_date"], "2026-06-29")
+        self.assertEqual(intent["expires_at"], "2026-06-30T00:00:00Z")
+        self.assertEqual(intent["items"][1], {"role": "Footwear", "code": "SHOE-001"})
+        self.assertTrue(intent["idempotency_key"].startswith("wardrobe:outfit_wear_intent:"))
+        self.assertEqual(intent["action"]["mcp_tool"], "wardrobe.execute_outfit_wear_intent")
+        self.assertEqual(fake.json_calls, [])
+
+    def test_prepare_outfit_wear_intent_rejects_missing_code(self) -> None:
+        fake = FakeWardrobeApiClient(None, json_responses={})
+
+        result = self._service_with_client(fake).call_tool(
+            "wardrobe.prepare_outfit_wear_intent",
+            {
+                "wear_date": "2026-06-29",
+                "items": [{"role": "Outer", "code": ""}],
+            },
+        )
+        payload = result["structuredContent"]
+
+        self.assertFalse(result["isError"])
+        self.assertFalse(payload["executable"])
+        self.assertEqual(payload["status"], "not_executable")
+        self.assertEqual(payload["reason"], "item_codes_not_locked")
+        self.assertEqual(payload["missing_codes"], [0])
+        self.assertEqual(fake.json_calls, [])
+
+    def test_execute_outfit_wear_intent_returns_confirmation_for_same_day_conflict(self) -> None:
+        fake = FakeWardrobeApiClient(
+            None,
+            json_responses={
+                ("POST", "/api/v1/history/outfits"): ApiResult(
+                    409,
+                    {},
+                    {
+                        "error": "existing_outfit",
+                        "dry_run": True,
+                        "owner": "OwnerA",
+                        "outfit_id": 321,
+                        "wear_date": "2026-06-29",
+                    },
+                ),
+            },
+        )
+        intent = self._ready_intent()
+
+        result = self._service_with_client(fake).call_tool(
+            "wardrobe.execute_outfit_wear_intent",
+            {"intent": intent, "workspace_id": "owner", "principal_id": "owner", "now": "2026-06-29T01:00:00Z"},
+        )
+        payload = result["structuredContent"]
+
+        self.assertFalse(result["isError"])
+        self.assertEqual(payload["status"], "needs_confirmation")
+        self.assertTrue(payload["needs_confirmation"])
+        self.assertEqual(payload["confirm_mode"], "replace")
+        self.assertEqual(payload["existing_outfit_id"], 321)
+        self.assertEqual(len(fake.json_calls), 1)
+        self.assertTrue(fake.json_calls[0]["body"]["dry_run"])
+        self.assertEqual(fake.json_calls[0]["body"]["mode"], "create_only")
+
+    def test_execute_outfit_wear_intent_rejects_tampered_idempotency_basis(self) -> None:
+        fake = FakeWardrobeApiClient(None, json_responses={})
+        intent = self._ready_intent()
+        intent["items"][0]["code"] = "OUT-999"
+
+        result = self._service_with_client(fake).call_tool(
+            "wardrobe.execute_outfit_wear_intent",
+            {"intent": intent, "workspace_id": "owner", "principal_id": "owner", "now": "2026-06-29T01:00:00Z"},
+        )
+        payload = result["structuredContent"]
+
+        self.assertFalse(result["isError"])
+        self.assertEqual(payload["status"], "invalid_intent")
+        self.assertEqual(payload["error"], "invalid_idempotency_key")
+        self.assertEqual(fake.json_calls, [])
+
+    def test_execute_outfit_wear_intent_rejects_workspace_mismatch(self) -> None:
+        fake = FakeWardrobeApiClient(None, json_responses={})
+        intent = self._ready_intent()
+
+        result = self._service_with_client(fake).call_tool(
+            "wardrobe.execute_outfit_wear_intent",
+            {"intent": intent, "workspace_id": "other", "principal_id": "other", "now": "2026-06-29T01:00:00Z"},
+        )
+        payload = result["structuredContent"]
+
+        self.assertFalse(result["isError"])
+        self.assertEqual(payload["status"], "workspace_mismatch")
+        self.assertEqual(fake.json_calls, [])
+
+    def test_execute_outfit_wear_intent_requires_confirmation_for_replace_mode(self) -> None:
+        fake = FakeWardrobeApiClient(None, json_responses={})
+        intent = self._ready_intent()
+
+        result = self._service_with_client(fake).call_tool(
+            "wardrobe.execute_outfit_wear_intent",
+            {
+                "intent": intent,
+                "workspace_id": "owner",
+                "principal_id": "owner",
+                "mode": "replace",
+                "now": "2026-06-29T01:00:00Z",
+            },
+        )
+        payload = result["structuredContent"]
+
+        self.assertFalse(result["isError"])
+        self.assertEqual(payload["status"], "confirmation_required")
+        self.assertTrue(payload["needs_confirmation"])
+        self.assertEqual(fake.json_calls, [])
+
+    def test_execute_outfit_wear_intent_writes_and_readbacks_after_confirmation(self) -> None:
+        intent = self._ready_intent()
+        wear_history = self._resource(
+            "wear_history",
+            "sha256:history",
+            [
+                {
+                    "id": 777,
+                    "wear_date": "2026-06-29",
+                    "items": [
+                        {"role": "Outer", "code": "OUT-001"},
+                        {"role": "Footwear", "code": "SHOE-001"},
+                    ],
+                }
+            ],
+        )
+        fake = FakeWardrobeApiClient(
+            None,
+            json_responses={
+                ("POST", "/api/v1/history/outfits"): [
+                    ApiResult(200, {}, {"saved": False, "dry_run": True, "action": "replaced", "wear_date": "2026-06-29"}),
+                    ApiResult(200, {}, {"saved": True, "action": "replaced", "outfit_id": 777, "wear_date": "2026-06-29"}),
+                ],
+                ("GET", "/api/v1/sync/outfit-context/resources/wear_history"): [
+                    ApiResult(200, {}, self._resource("wear_history", "sha256:old", [])),
+                    ApiResult(200, {}, wear_history),
+                ],
+            },
+        )
+
+        result = self._service_with_client(fake).call_tool(
+            "wardrobe.execute_outfit_wear_intent",
+            {
+                "intent": intent,
+                "workspace_id": "owner",
+                "principal_id": "owner",
+                "confirm_replace": True,
+                "now": "2026-06-29T01:00:00Z",
+            },
+        )
+        payload = result["structuredContent"]
+
+        self.assertFalse(result["isError"])
+        self.assertEqual(payload["status"], "stored")
+        self.assertEqual(payload["outfit_id"], 777)
+        self.assertTrue(payload["readback_verified"])
+        self.assertEqual(payload["readback"]["items"][0], {"role": "Outer", "code": "OUT-001"})
+        self.assertEqual(payload["state_persistence"]["kind"], "program_api_idempotency")
+        self.assertEqual(fake.json_calls[0]["body"]["mode"], "replace")
+        self.assertTrue(fake.json_calls[0]["body"]["dry_run"])
+        self.assertEqual(fake.json_calls[2]["body"]["mode"], "replace")
+        self.assertFalse(fake.json_calls[2]["body"]["dry_run"])
+        self.assertEqual(fake.json_calls[2]["headers"]["Idempotency-Key"], intent["idempotency_key"])
 
     def test_stats_inventory_groups_cached_items_without_live_item_loop(self) -> None:
         (self.workspace / ".hermes-cache" / "resources" / "items.json").write_text(

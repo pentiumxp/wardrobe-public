@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import mimetypes
 import os
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -22,7 +24,7 @@ from wardrobe_app.wardrobe_mcp_stats import (
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "wardrobe-mcp"
-SERVER_VERSION = "0.2.2"
+SERVER_VERSION = "0.2.3"
 JSON_HEADERS = {"Accept": "application/json"}
 IMAGE_ACCEPT_HEADERS = {"Accept": "image/jpeg,image/png,image/*;q=0.8,*/*;q=0.1"}
 DEFAULT_TIMEOUT_SECONDS = 30
@@ -36,6 +38,8 @@ RESOURCE_NAMES = {
 }
 WRITE_MODES = ("create_only", "upsert", "replace")
 WRITE_MODE_SET = set(WRITE_MODES)
+OUTFIT_WEAR_INTENT_TYPE = "outfit_wear_intent"
+OUTFIT_WEAR_INTENT_SCHEMA_VERSION = 1
 CANONICAL_LAYER_ROLES = (
     "Inner",
     "Middle",
@@ -428,6 +432,52 @@ class WardrobeMcpService:
                 ["payload"],
             ),
             self._tool(
+                "wardrobe.prepare_outfit_wear_intent",
+                "Prepare Outfit Wear Intent",
+                "Build a bounded executable outfit_wear_intent from locked recommendation item codes.",
+                {
+                    "workspace": {"type": "string"},
+                    "workspace_id": {"type": "string", "default": "owner"},
+                    "principal_id": {"type": "string", "default": "owner"},
+                    "wear_date": {"type": "string", "description": "YYYY-MM-DD wear date."},
+                    "timezone": {"type": "string", "default": "Asia/Shanghai"},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "role": {"type": "string", "enum": list(CANONICAL_OUTFIT_ROLES)},
+                                "code": {"type": "string"},
+                            },
+                            "required": ["role", "code"],
+                        },
+                    },
+                    "source_message": {
+                        "type": "object",
+                        "description": "Bounded message/run identifiers only; do not include prompt text.",
+                    },
+                    "expires_at": {"type": "string"},
+                    "now": {"type": "string", "description": "Optional ISO timestamp for tests."},
+                },
+                ["wear_date", "items"],
+            ),
+            self._tool(
+                "wardrobe.execute_outfit_wear_intent",
+                "Execute Outfit Wear Intent",
+                "Deterministically dry-run, write, and read back a prepared outfit_wear_intent.",
+                {
+                    "workspace": {"type": "string"},
+                    "intent": {"type": "object"},
+                    "workspace_id": {"type": "string", "default": "owner"},
+                    "principal_id": {"type": "string", "default": "owner"},
+                    "mode": {"type": "string", "enum": ["create_only", "replace"]},
+                    "confirm_replace": {"type": "boolean", "default": False},
+                    "dry_run_only": {"type": "boolean", "default": False},
+                    "now": {"type": "string", "description": "Optional ISO timestamp for tests."},
+                },
+                ["intent"],
+            ),
+            self._tool(
                 "wardrobe.write_item",
                 "Write Wardrobe Item",
                 "Create or update structured item metadata through Program API. Defaults to dry-run.",
@@ -529,6 +579,10 @@ class WardrobeMcpService:
                 return self._tool_result(self.set_primary_photo(args))
             if name == "wardrobe.write_history":
                 return self._tool_result(self.write_history(args))
+            if name == "wardrobe.prepare_outfit_wear_intent":
+                return self._tool_result(self.prepare_outfit_wear_intent(args))
+            if name == "wardrobe.execute_outfit_wear_intent":
+                return self._tool_result(self.execute_outfit_wear_intent(args))
             if name == "wardrobe.write_item":
                 return self._tool_result(self.write_item(args))
             if name == "wardrobe.upload_photo":
@@ -911,6 +965,347 @@ class WardrobeMcpService:
             ok_statuses={200, 201, 409},
         )
         return self._require_dict(result.data, "history_write")
+
+    def prepare_outfit_wear_intent(self, args: dict[str, Any]) -> dict[str, Any]:
+        self._runtime_and_client(args)
+        validation = self._validated_intent_items(args.get("items"))
+        if validation["errors"]:
+            return {
+                "ok": False,
+                "status": "not_executable",
+                "reason": "item_codes_not_locked",
+                "executable": False,
+                "errors": validation["errors"],
+                "missing_codes": validation["missing_codes"],
+            }
+        wear_date = self._required_wear_date(args.get("wear_date"))
+        workspace_id = self._identity_arg(args.get("workspace_id"), "owner")
+        principal_id = self._identity_arg(args.get("principal_id"), workspace_id)
+        timezone_name = self._identity_arg(args.get("timezone"), "Asia/Shanghai")
+        source_message = self._bounded_source_message(args.get("source_message"))
+        now = self._parse_intent_time(args.get("now")) or datetime.now(timezone.utc)
+        expires_at = self._expires_at_arg(args.get("expires_at"), now)
+        idempotency_key = self._intent_idempotency_key(
+            principal_id=principal_id,
+            workspace_id=workspace_id,
+            wear_date=wear_date,
+            timezone_name=timezone_name,
+            items=validation["items"],
+            source_message=source_message,
+        )
+        intent = {
+            "schema_version": OUTFIT_WEAR_INTENT_SCHEMA_VERSION,
+            "type": OUTFIT_WEAR_INTENT_TYPE,
+            "plugin_id": "wardrobe",
+            "principal_id": principal_id,
+            "workspace_id": workspace_id,
+            "wear_date": wear_date,
+            "timezone": timezone_name,
+            "items": validation["items"],
+            "source_message": source_message,
+            "idempotency_key": idempotency_key,
+            "expires_at": expires_at,
+            "action": {
+                "mcp_tool": "wardrobe.execute_outfit_wear_intent",
+                "default_mode": "create_only",
+                "confirm_mode": "replace",
+            },
+        }
+        return {
+            "ok": True,
+            "status": "ready",
+            "executable": True,
+            "intent": intent,
+            "metadata_key": OUTFIT_WEAR_INTENT_TYPE,
+        }
+
+    def execute_outfit_wear_intent(self, args: dict[str, Any]) -> dict[str, Any]:
+        _, client = self._runtime_and_client(args)
+        intent = args.get("intent")
+        if not isinstance(intent, dict):
+            raise WardrobeMcpError("intent_required")
+        validation = self._validate_outfit_wear_intent(intent, args)
+        if not validation["ok"]:
+            return validation
+        confirm_replace = _bool_arg(args.get("confirm_replace"), default=False)
+        mode_arg = str(args.get("mode") or "").strip().lower()
+        mode = "replace" if confirm_replace else "create_only"
+        if mode_arg:
+            if mode_arg not in {"create_only", "replace"}:
+                raise WardrobeMcpError("invalid_mode")
+            if mode_arg == "replace" and not confirm_replace:
+                return {
+                    "ok": False,
+                    "status": "confirmation_required",
+                    "needs_confirmation": True,
+                    "executable": True,
+                    "confirm_mode": "replace",
+                    "intent": intent,
+                }
+            mode = mode_arg
+        payload = self._payload_from_outfit_wear_intent(intent, mode=mode, dry_run=True)
+        dry_run = self._post_outfit_wear_intent_history(client, payload, intent["idempotency_key"])
+        if self._history_existing_outfit_response(dry_run):
+            return self._needs_confirmation_from_history(intent, dry_run)
+        if _bool_arg(args.get("dry_run_only"), default=False):
+            return {
+                "ok": True,
+                "status": "dry_run_passed",
+                "executable": True,
+                "intent": intent,
+                "dry_run": dry_run,
+            }
+        self._read_wear_history_resource(client)
+        write_payload = self._payload_from_outfit_wear_intent(intent, mode=mode, dry_run=False)
+        write_result = self._post_outfit_wear_intent_history(client, write_payload, intent["idempotency_key"])
+        if self._history_existing_outfit_response(write_result):
+            return self._needs_confirmation_from_history(intent, write_result)
+        if not write_result.get("saved"):
+            return {
+                "ok": False,
+                "status": "write_failed",
+                "executable": False,
+                "intent": intent,
+                "write_result": write_result,
+            }
+        readback_resource = self._read_wear_history_resource(client)
+        readback = self._find_wear_history_readback(readback_resource, write_result)
+        if readback is None:
+            return {
+                "ok": False,
+                "status": "readback_failed",
+                "executable": False,
+                "intent": intent,
+                "write_result": write_result,
+                "outfit_id": write_result.get("outfit_id"),
+            }
+        return {
+            "ok": True,
+            "status": "stored",
+            "executable": False,
+            "intent": intent,
+            "outfit_id": write_result.get("outfit_id"),
+            "wear_date": write_result.get("wear_date"),
+            "action": write_result.get("action"),
+            "readback_verified": True,
+            "readback": readback,
+            "state_persistence": {
+                "kind": "program_api_idempotency",
+                "idempotency_key": intent["idempotency_key"],
+            },
+        }
+
+    @staticmethod
+    def _identity_arg(value: Any, default: str) -> str:
+        text = str(value or "").strip()
+        return text or default
+
+    @staticmethod
+    def _parse_intent_time(value: Any) -> datetime | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise WardrobeMcpError("invalid_time") from exc
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    @classmethod
+    def _expires_at_arg(cls, value: Any, now: datetime) -> str:
+        parsed = cls._parse_intent_time(value)
+        if parsed is None:
+            parsed = now + timedelta(hours=24)
+        return parsed.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    @classmethod
+    def _required_wear_date(cls, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise WardrobeMcpError("wear_date_required")
+        if len(text) >= 10:
+            text = text[:10]
+        try:
+            datetime.strptime(text, "%Y-%m-%d")
+        except ValueError as exc:
+            raise WardrobeMcpError("invalid_wear_date") from exc
+        return text
+
+    @staticmethod
+    def _bounded_source_message(value: Any) -> dict[str, str]:
+        source = value if isinstance(value, dict) else {}
+        allowed = ("message_id", "messageId", "thread_id", "threadId", "run_id", "runId", "request_id", "requestId")
+        result: dict[str, str] = {}
+        for key in allowed:
+            raw = source.get(key)
+            text = str(raw or "").strip()
+            if text:
+                result[key.replace("Id", "_id").lower()] = text[:160]
+        return result
+
+    @classmethod
+    def _validated_intent_items(cls, raw_items: Any) -> dict[str, Any]:
+        items = raw_items if isinstance(raw_items, list) else []
+        result: list[dict[str, str]] = []
+        errors: list[dict[str, Any]] = []
+        missing_codes: list[int] = []
+        if not items:
+            errors.append({"code": "items_required", "index": -1})
+        for index, raw_item in enumerate(items):
+            item = raw_item if isinstance(raw_item, dict) else {}
+            code = str(item.get("code") or "").strip()
+            role = str(item.get("role") or "").strip()
+            if not code:
+                errors.append({"code": "missing_item_code", "index": index})
+                missing_codes.append(index)
+            if role not in CANONICAL_OUTFIT_ROLES:
+                errors.append({"code": "invalid_outfit_role", "index": index, "role": role})
+            if code and role in CANONICAL_OUTFIT_ROLES:
+                result.append({"role": role, "code": code})
+        return {"items": result, "errors": errors, "missing_codes": missing_codes}
+
+    @staticmethod
+    def _intent_idempotency_key(
+        *,
+        principal_id: str,
+        workspace_id: str,
+        wear_date: str,
+        timezone_name: str,
+        items: list[dict[str, str]],
+        source_message: dict[str, str],
+    ) -> str:
+        intent_basis = {
+            "plugin_id": "wardrobe",
+            "principal_id": principal_id,
+            "workspace_id": workspace_id,
+            "wear_date": wear_date,
+            "timezone": timezone_name,
+            "items": items,
+            "source_message": source_message,
+        }
+        intent_hash = hashlib.sha256(_json_dumps(intent_basis).encode("utf-8")).hexdigest()[:32]
+        return f"wardrobe:outfit_wear_intent:{intent_hash}"
+
+    @classmethod
+    def _validate_outfit_wear_intent(cls, intent: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
+        if intent.get("type") != OUTFIT_WEAR_INTENT_TYPE:
+            return {"ok": False, "status": "invalid_intent", "executable": False, "error": "invalid_intent_type"}
+        if int(intent.get("schema_version") or 0) != OUTFIT_WEAR_INTENT_SCHEMA_VERSION:
+            return {"ok": False, "status": "invalid_intent", "executable": False, "error": "invalid_intent_schema"}
+        if intent.get("plugin_id") != "wardrobe":
+            return {"ok": False, "status": "invalid_intent", "executable": False, "error": "invalid_plugin_id"}
+        workspace_id = cls._identity_arg(intent.get("workspace_id"), "")
+        principal_id = cls._identity_arg(intent.get("principal_id"), "")
+        timezone_name = cls._identity_arg(intent.get("timezone"), "")
+        if not workspace_id or not principal_id or not timezone_name:
+            return {"ok": False, "status": "invalid_intent", "executable": False, "error": "missing_intent_identity"}
+        expected_workspace = cls._identity_arg(args.get("workspace_id"), "owner")
+        expected_principal = cls._identity_arg(args.get("principal_id"), expected_workspace)
+        if workspace_id != expected_workspace:
+            return {"ok": False, "status": "workspace_mismatch", "executable": False}
+        if principal_id != expected_principal:
+            return {"ok": False, "status": "principal_mismatch", "executable": False}
+        now = cls._parse_intent_time(args.get("now")) or datetime.now(timezone.utc)
+        expires_at = cls._parse_intent_time(intent.get("expires_at"))
+        if expires_at is None or expires_at <= now:
+            return {"ok": False, "status": "expired", "executable": False}
+        source_message = cls._bounded_source_message(intent.get("source_message"))
+        if intent.get("source_message", {}) != source_message:
+            return {"ok": False, "status": "invalid_intent", "executable": False, "error": "invalid_source_message"}
+        validation = cls._validated_intent_items(intent.get("items"))
+        if validation["errors"]:
+            return {
+                "ok": False,
+                "status": "not_executable",
+                "reason": "item_codes_not_locked",
+                "executable": False,
+                "errors": validation["errors"],
+                "missing_codes": validation["missing_codes"],
+            }
+        wear_date = cls._required_wear_date(intent.get("wear_date"))
+        if str(intent.get("wear_date") or "").strip() != wear_date:
+            return {"ok": False, "status": "invalid_intent", "executable": False, "error": "invalid_wear_date"}
+        expected_idempotency_key = cls._intent_idempotency_key(
+            principal_id=principal_id,
+            workspace_id=workspace_id,
+            wear_date=wear_date,
+            timezone_name=timezone_name,
+            items=validation["items"],
+            source_message=source_message,
+        )
+        if str(intent.get("idempotency_key") or "") != expected_idempotency_key:
+            return {"ok": False, "status": "invalid_intent", "executable": False, "error": "invalid_idempotency_key"}
+        return {"ok": True}
+
+    @staticmethod
+    def _payload_from_outfit_wear_intent(intent: dict[str, Any], *, mode: str, dry_run: bool) -> dict[str, Any]:
+        return {
+            "wear_date": intent["wear_date"],
+            "items": [{"role": item["role"], "code": item["code"]} for item in intent.get("items", [])],
+            "source": "home_ai_outfit_wear_intent",
+            "external_id": intent["idempotency_key"],
+            "mode": mode,
+            "dry_run": dry_run,
+        }
+
+    @staticmethod
+    def _post_outfit_wear_intent_history(client: Any, payload: dict[str, Any], idempotency_key: str) -> dict[str, Any]:
+        result = client.request_json(
+            "POST",
+            "/api/v1/history/outfits",
+            body=payload,
+            headers={"Idempotency-Key": idempotency_key},
+            ok_statuses={200, 201, 409},
+        )
+        return WardrobeMcpService._require_dict(result.data, "history_write")
+
+    @staticmethod
+    def _history_existing_outfit_response(payload: dict[str, Any]) -> bool:
+        return str(payload.get("error") or "").strip() == "existing_outfit"
+
+    @staticmethod
+    def _needs_confirmation_from_history(intent: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "status": "needs_confirmation",
+            "needs_confirmation": True,
+            "executable": True,
+            "confirm_mode": "replace",
+            "intent": intent,
+            "existing_outfit_id": payload.get("outfit_id"),
+            "wear_date": payload.get("wear_date") or intent.get("wear_date"),
+        }
+
+    @staticmethod
+    def _read_wear_history_resource(client: Any) -> dict[str, Any]:
+        result = client.request_json(
+            "GET",
+            "/api/v1/sync/outfit-context/resources/wear_history",
+            ok_statuses={200},
+        )
+        return WardrobeMcpService._require_dict(result.data, "wear_history_resource")
+
+    @staticmethod
+    def _find_wear_history_readback(resource: dict[str, Any], write_result: dict[str, Any]) -> dict[str, Any] | None:
+        rows = resource.get("wear_history") or resource.get("data") or []
+        target_id = write_result.get("outfit_id")
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            if target_id is not None and str(row.get("id")) != str(target_id):
+                continue
+            return {
+                "outfit_id": row.get("id"),
+                "wear_date": row.get("wear_date"),
+                "items": [
+                    {"role": item.get("role"), "code": item.get("code")}
+                    for item in (row.get("items") or [])
+                    if isinstance(item, dict)
+                ],
+            }
+        return None
 
     def write_item(self, args: dict[str, Any]) -> dict[str, Any]:
         _, client = self._runtime_and_client(args)
