@@ -1233,6 +1233,80 @@ class ProgramApiHelperTests(unittest.TestCase):
         self.assertIsNotNone(token_row)
         self.assertEqual(token_row["owner"], "FreshOwner")
 
+    def test_register_hermes_workspace_route_accepts_registration_key(self) -> None:
+        registration_key = "wardrobe-registration-" + "p" * 32
+        workspace_access_key = "wd_live_" + "r" * 40
+        previous_secret_dir = server.API_TOKEN_SECRET_DIR
+        previous_env = {name: os.environ.get(name) for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "wardrobe-route.db"
+            registration_key_path = Path(temp_dir) / "wardrobe-registration-access-key.txt"
+            registration_key_path.write_text(registration_key + "\n", encoding="utf-8")
+            server.API_TOKEN_SECRET_DIR = Path(temp_dir) / "api-token-secrets"
+            seed_conn = sqlite3.connect(db_path)
+            seed_conn.row_factory = sqlite3.Row
+            db.init_db(seed_conn)
+            seed_conn.close()
+            payload = {
+                "owner": "RouteOwner",
+                "workspace_id": "route-owner",
+                "display_name": "Route Owner Wardrobe",
+                "api_base_url": "http://127.0.0.1:8765",
+                "access_key": workspace_access_key,
+            }
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            sent: list[tuple[dict, int]] = []
+            handler = object.__new__(server.WardrobeHandler)
+            handler.headers = {
+                "Authorization": f"Bearer {registration_key}",
+                "Content-Length": str(len(body)),
+            }
+            handler.rfile = io.BytesIO(body)
+            handler._send_json = lambda response, status=200, headers=None: sent.append((response, status))
+
+            def open_route_db() -> sqlite3.Connection:
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                return conn
+
+            handler._db = open_route_db
+            try:
+                for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS:
+                    os.environ.pop(name, None)
+                os.environ["HERMES_MOBILE_WARDROBE_REGISTRATION_ACCESS_KEY_PATH"] = str(registration_key_path)
+
+                handler._handle_program_api_post("/api/v1/hermes/plugin/workspaces")
+            finally:
+                server.API_TOKEN_SECRET_DIR = previous_secret_dir
+                for name, value in previous_env.items():
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+
+            self.assertEqual(sent[-1][1], 201)
+            self.assertTrue(sent[-1][0]["registered"])
+            self.assertEqual(sent[-1][0]["workspace_id"], "route-owner")
+            self.assertNotIn("access_key", sent[-1][0])
+            self.assertNotIn(workspace_access_key, json.dumps(sent[-1][0], ensure_ascii=False))
+            readback_conn = sqlite3.connect(db_path)
+            readback_conn.row_factory = sqlite3.Row
+            try:
+                token_row = readback_conn.execute(
+                    "SELECT owner FROM api_tokens WHERE token_hash = ?",
+                    (server._api_token_hash(workspace_access_key),),
+                ).fetchone()
+                workspace_row = readback_conn.execute(
+                    "SELECT owner FROM hermes_plugin_workspaces WHERE workspace_id = ?",
+                    ("route-owner",),
+                ).fetchone()
+            finally:
+                readback_conn.close()
+            self.assertIsNotNone(token_row)
+            self.assertEqual(token_row["owner"], "RouteOwner")
+            self.assertIsNotNone(workspace_row)
+            self.assertEqual(workspace_row["owner"], "RouteOwner")
+
     def test_hermes_plugin_launch_token_is_one_time_owner_session_bridge(self) -> None:
         previous_secret_dir = server.API_TOKEN_SECRET_DIR
         access_key = "wd_live_" + "l" * 40
