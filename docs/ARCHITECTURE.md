@@ -44,6 +44,15 @@ authentication and stores only token hashes. Important surfaces include:
 The resource-level sync protocol avoids monolithic bundle downloads. Clients
 compare per-resource checksum/count and fetch only changed resources.
 
+Workspace registration has a server-to-server bootstrap credential path for
+fresh public installs that do not yet have migrated `api_tokens` rows. The
+registration-only key is read from
+`HERMES_MOBILE_WARDROBE_REGISTRATION_ACCESS_KEY_PATH`,
+`WARDROBE_REGISTRATION_ACCESS_KEY_PATH`, or the Home AI root default
+`data/plugin-secrets/wardrobe-registration-access-key.txt`. It is accepted only
+by `POST /api/v1/hermes/plugin/workspaces` and does not grant normal Program
+API scopes.
+
 ## Web UI
 
 The Web UI is the human-facing application. `?embed=hermes` enables the

@@ -109,6 +109,11 @@ DRIVE_NOTIFY_QUEUE_DIR = DATA_DIR / "drive-notify-queue"
 API_TOKEN_SECRET_DIR = Path(
     os.environ.get("WARDROBE_API_TOKEN_SECRET_DIR", str(DATA_DIR / "api-token-secrets"))
 )
+REGISTRATION_ACCESS_KEY_FILE_NAME = "wardrobe-registration-access-key.txt"
+REGISTRATION_ACCESS_KEY_PATH_ENV_VARS = (
+    "HERMES_MOBILE_WARDROBE_REGISTRATION_ACCESS_KEY_PATH",
+    "WARDROBE_REGISTRATION_ACCESS_KEY_PATH",
+)
 WARDROBE_FILE = "\u8863\u6a71.xlsx"
 WARDROBE_TEXT_EXPORT_FILE = "\u8863\u6a71.csv"
 WARDROBE_CHATGPT_RULES_FILE = "\u8863\u6a71_ChatGPT\u89e3\u6790\u89c4\u5219.md"
@@ -1185,6 +1190,51 @@ def _api_token_context(conn: sqlite3.Connection, authorization_header: str, requ
         "scopes": sorted(scopes),
         "token_prefix": _normalize_edit_value(row["token_prefix"]),
     }, None, 200
+
+
+def _registration_access_key_candidate_paths() -> list[Path]:
+    env_paths = [
+        Path(value)
+        for name in REGISTRATION_ACCESS_KEY_PATH_ENV_VARS
+        if (value := _normalize_edit_value(os.environ.get(name)))
+    ]
+    if env_paths:
+        candidates = env_paths
+    else:
+        root_value = _normalize_edit_value(
+            os.environ.get("HERMES_MOBILE_ROOT") or os.environ.get("HOMEAI_ROOT")
+        )
+        root = Path(root_value) if root_value else ROOT_DIR.parent.parent
+        candidates = [root / "data" / "plugin-secrets" / REGISTRATION_ACCESS_KEY_FILE_NAME]
+    result: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        key = str(path)
+        if key not in seen:
+            result.append(path)
+            seen.add(key)
+    return result
+
+
+def _registration_access_key_context(authorization_header: str) -> dict | None:
+    prefix, _, token = _normalize_edit_value(authorization_header).partition(" ")
+    if prefix.lower() != "bearer" or not token:
+        return None
+    for path in _registration_access_key_candidate_paths():
+        try:
+            expected = path.read_text(encoding="utf-8").strip()
+        except (FileNotFoundError, IsADirectoryError, OSError, UnicodeDecodeError):
+            continue
+        if expected and hmac.compare_digest(token, expected):
+            return {
+                "token_id": None,
+                "name": "hermes_registration_access_key",
+                "owner": "",
+                "scopes": ["plugin:workspace:register"],
+                "token_prefix": "",
+                "source": "registration_access_key",
+            }
+    return None
 
 
 def _api_access_key_owner_slug(owner: str) -> str:
@@ -6647,7 +6697,7 @@ def _api_sync_rules_payload(owner: str) -> dict:
             "embedded_entry": "/?embed=hermes",
             "workspace_registration": "POST /api/v1/hermes/plugin/workspaces",
             "workspace_launch": "POST /api/v1/hermes/plugin/launch",
-            "registration_auth": "Requires owners:write or admin:* bearer scope, or an authenticated same-origin Wardrobe admin session.",
+            "registration_auth": "Requires a registration-only server key file, owners:write/admin:* bearer scope, or an authenticated same-origin Wardrobe admin session.",
             "owner_binding": "Hermes Mobile generates the workspace Access Key and sends it once. Wardrobe stores token_hash and owner/workspace metadata, and never returns the raw key.",
         },
         "history_write": {
@@ -8638,9 +8688,18 @@ class WardrobeHandler(BaseHTTPRequestHandler):
             return None
         return context
 
-    def _owner_registration_context(self, conn: sqlite3.Connection) -> dict | None:
+    def _owner_registration_context(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        allow_registration_key: bool = False,
+    ) -> dict | None:
         authorization = self.headers.get("Authorization", "")
         if _normalize_edit_value(authorization):
+            if allow_registration_key:
+                registration_context = _registration_access_key_context(authorization)
+                if registration_context is not None:
+                    return registration_context
             return self._program_api_context(conn, "owners:write")
         username = _session_username_by_id(conn, self._request_session_id())
         if username and _user_is_admin(username):
@@ -8890,7 +8949,7 @@ class WardrobeHandler(BaseHTTPRequestHandler):
                 self._send_json(response, status=201)
                 return
             if path == "/api/v1/hermes/plugin/workspaces":
-                context = self._owner_registration_context(conn)
+                context = self._owner_registration_context(conn, allow_registration_key=True)
                 if context is None:
                     return
                 payload = _parse_json(self)

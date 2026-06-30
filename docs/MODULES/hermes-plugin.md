@@ -71,6 +71,21 @@ registration. Wardrobe stores only the token hash and binding metadata. The
 registration response returns a prefix and metadata only; it never returns the
 raw key.
 
+Fresh public installs may not have any migrated Wardrobe `api_tokens` rows.
+For server-to-server workspace registration, Wardrobe also accepts a
+registration-only bearer key read from one of these file path env vars:
+
+- `HERMES_MOBILE_WARDROBE_REGISTRATION_ACCESS_KEY_PATH`
+- `WARDROBE_REGISTRATION_ACCESS_KEY_PATH`
+
+If neither env var is set, Wardrobe checks the Home AI root default:
+`data/plugin-secrets/wardrobe-registration-access-key.txt`. This key only
+authorizes `POST /api/v1/hermes/plugin/workspaces`; it does not grant
+`sync:read`, `items:write`, `history:write`, plugin launch, or other Program
+API scopes. The raw registration key must not be returned in responses, docs,
+logs, or launch URLs. Existing migrated `owners:write` bearer tokens and
+same-origin Wardrobe admin sessions remain valid registration mechanisms.
+
 ## Launch And Session
 
 Endpoint:

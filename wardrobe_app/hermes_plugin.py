@@ -195,7 +195,15 @@ def build_plugin_manifest(
             "raw_key_returned_by_wardrobe": False,
         },
         "permissions": {
-            "register_workspace_requires": ["owners:write", "admin:*"],
+            "register_workspace_requires": ["registration_access_key", "owners:write", "admin:*"],
+            "registration_access_key": {
+                "scope": "workspace_registration_only",
+                "accepted_path_env": [
+                    "HERMES_MOBILE_WARDROBE_REGISTRATION_ACCESS_KEY_PATH",
+                    "WARDROBE_REGISTRATION_ACCESS_KEY_PATH",
+                ],
+                "raw_key_returned_by_wardrobe": False,
+            },
             "owner_token_scopes": list(DEFAULT_PLUGIN_SCOPES),
         },
         "actions": [

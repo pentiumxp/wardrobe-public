@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -205,6 +206,101 @@ class ProgramApiHelperTests(unittest.TestCase):
             (server._api_token_hash(token),),
         ).fetchone()["last_used_at"]
         self.assertEqual(last_used, stale)
+
+    def test_registration_access_key_context_accepts_central_file_without_api_token(self) -> None:
+        registration_key = "wardrobe-registration-" + "r" * 32
+        previous_env = {name: os.environ.get(name) for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS}
+        previous_root = os.environ.get("HERMES_MOBILE_ROOT")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            key_path = Path(temp_dir) / "wardrobe-registration-access-key.txt"
+            key_path.write_text(registration_key + "\n", encoding="utf-8")
+            try:
+                for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS:
+                    os.environ.pop(name, None)
+                os.environ["WARDROBE_REGISTRATION_ACCESS_KEY_PATH"] = str(key_path)
+
+                context = server._registration_access_key_context(f"Bearer {registration_key}")
+            finally:
+                for name, value in previous_env.items():
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+                if previous_root is None:
+                    os.environ.pop("HERMES_MOBILE_ROOT", None)
+                else:
+                    os.environ["HERMES_MOBILE_ROOT"] = previous_root
+
+        self.assertIsNotNone(context)
+        self.assertEqual(context["source"], "registration_access_key")
+        self.assertEqual(context["token_id"], None)
+        self.assertEqual(context["scopes"], ["plugin:workspace:register"])
+        token_count = self.conn.execute("SELECT COUNT(*) AS count FROM api_tokens").fetchone()["count"]
+        self.assertEqual(token_count, 0)
+
+    def test_registration_access_key_context_uses_home_ai_root_default(self) -> None:
+        registration_key = "wardrobe-registration-" + "d" * 32
+        previous_env = {name: os.environ.get(name) for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS}
+        previous_root = os.environ.get("HERMES_MOBILE_ROOT")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            key_dir = Path(temp_dir) / "data" / "plugin-secrets"
+            key_dir.mkdir(parents=True)
+            (key_dir / "wardrobe-registration-access-key.txt").write_text(
+                registration_key + "\n",
+                encoding="utf-8",
+            )
+            try:
+                for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS:
+                    os.environ.pop(name, None)
+                os.environ["HERMES_MOBILE_ROOT"] = temp_dir
+
+                context = server._registration_access_key_context(f"Bearer {registration_key}")
+            finally:
+                for name, value in previous_env.items():
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+                if previous_root is None:
+                    os.environ.pop("HERMES_MOBILE_ROOT", None)
+                else:
+                    os.environ["HERMES_MOBILE_ROOT"] = previous_root
+
+        self.assertIsNotNone(context)
+        self.assertEqual(context["source"], "registration_access_key")
+
+    def test_registration_access_key_is_limited_to_workspace_registration_context(self) -> None:
+        registration_key = "wardrobe-registration-" + "w" * 32
+        previous_env = {name: os.environ.get(name) for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS}
+        handler = object.__new__(server.WardrobeHandler)
+        handler.headers = {"Authorization": f"Bearer {registration_key}"}
+        sent: list[tuple[dict, int]] = []
+        handler._send_json = lambda payload, status=200, headers=None: sent.append((payload, status))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            key_path = Path(temp_dir) / "wardrobe-registration-access-key.txt"
+            key_path.write_text(registration_key + "\n", encoding="utf-8")
+            try:
+                for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS:
+                    os.environ.pop(name, None)
+                os.environ["WARDROBE_REGISTRATION_ACCESS_KEY_PATH"] = str(key_path)
+
+                frame_context = handler._owner_registration_context(self.conn)
+                workspace_context = handler._owner_registration_context(
+                    self.conn,
+                    allow_registration_key=True,
+                )
+            finally:
+                for name, value in previous_env.items():
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+
+        self.assertIsNone(frame_context)
+        self.assertEqual(sent[-1][1], 401)
+        self.assertEqual(sent[-1][0]["error"], "invalid_token")
+        self.assertIsNotNone(workspace_context)
+        self.assertEqual(workspace_context["source"], "registration_access_key")
 
     def test_session_username_throttles_last_seen_touch(self) -> None:
         session_id = "session-throttle"
@@ -985,6 +1081,12 @@ class ProgramApiHelperTests(unittest.TestCase):
         )
         self.assertEqual(manifest["program_api"]["plugin_launch"], "/api/v1/hermes/plugin/launch")
         self.assertFalse(manifest["owner_binding"]["raw_key_returned_by_wardrobe"])
+        self.assertIn("registration_access_key", manifest["permissions"]["register_workspace_requires"])
+        self.assertEqual(
+            manifest["permissions"]["registration_access_key"]["scope"],
+            "workspace_registration_only",
+        )
+        self.assertFalse(manifest["permissions"]["registration_access_key"]["raw_key_returned_by_wardrobe"])
         self.assertIn("wardrobe.sync", manifest["mcp"]["required_tools"])
         self.assertIn("wardrobe.prepare_outfit_wear_intent", manifest["mcp"]["required_tools"])
         self.assertIn("wardrobe.execute_outfit_wear_intent", manifest["mcp"]["required_tools"])
@@ -1081,6 +1183,55 @@ class ProgramApiHelperTests(unittest.TestCase):
         ).fetchone()
         self.assertIsNotNone(workspace_row)
         self.assertEqual(workspace_row["owner"], "OwnerB")
+
+    def test_register_hermes_workspace_accepts_registration_key_without_migrated_owner_token(self) -> None:
+        registration_key = "wardrobe-registration-" + "f" * 32
+        workspace_access_key = "wd_live_" + "i" * 40
+        previous_secret_dir = server.API_TOKEN_SECRET_DIR
+        previous_env = {name: os.environ.get(name) for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS}
+        handler = object.__new__(server.WardrobeHandler)
+        handler.headers = {"Authorization": f"Bearer {registration_key}"}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            token_secret_dir = Path(temp_dir) / "api-token-secrets"
+            registration_key_path = Path(temp_dir) / "wardrobe-registration-access-key.txt"
+            registration_key_path.write_text(registration_key + "\n", encoding="utf-8")
+            server.API_TOKEN_SECRET_DIR = token_secret_dir
+            try:
+                for name in server.REGISTRATION_ACCESS_KEY_PATH_ENV_VARS:
+                    os.environ.pop(name, None)
+                os.environ["HERMES_MOBILE_WARDROBE_REGISTRATION_ACCESS_KEY_PATH"] = str(registration_key_path)
+                context = handler._owner_registration_context(self.conn, allow_registration_key=True)
+                response = server._api_register_hermes_plugin_workspace(
+                    self.conn,
+                    {
+                        "owner": "FreshOwner",
+                        "workspace_id": "fresh-owner",
+                        "display_name": "Fresh Owner Wardrobe",
+                        "api_base_url": "http://127.0.0.1:8765",
+                        "access_key": workspace_access_key,
+                    },
+                )
+            finally:
+                server.API_TOKEN_SECRET_DIR = previous_secret_dir
+                for name, value in previous_env.items():
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+
+        self.assertIsNotNone(context)
+        self.assertEqual(context["source"], "registration_access_key")
+        self.assertTrue(response["registered"])
+        self.assertEqual(response["workspace_id"], "fresh-owner")
+        self.assertEqual(response["token_prefix"], workspace_access_key[:16])
+        self.assertNotIn("access_key", response)
+        self.assertNotIn(workspace_access_key, json.dumps(response, ensure_ascii=False))
+        token_row = self.conn.execute(
+            "SELECT owner, scopes_json FROM api_tokens WHERE token_hash = ?",
+            (server._api_token_hash(workspace_access_key),),
+        ).fetchone()
+        self.assertIsNotNone(token_row)
+        self.assertEqual(token_row["owner"], "FreshOwner")
 
     def test_hermes_plugin_launch_token_is_one_time_owner_session_bridge(self) -> None:
         previous_secret_dir = server.API_TOKEN_SECRET_DIR

@@ -20,6 +20,9 @@ Expected coverage:
 - manifest contains no raw keys/tokens/cookies
 - launch token is short, one-time, and never returns the long-lived key
 - workspace registration stores binding metadata and not raw response secrets
+- fresh-install workspace registration accepts the registration-only file key
+  without preexisting migrated `api_tokens` rows, and that key is not accepted
+  for unrelated owner-registration routes
 - `?embed=hermes` session bridge uses cookie plus `X-Wardrobe-Session`
 - frontend declares navigation, back, back result, and refresh required events
 - resource URL helpers only add `plugin_session` to same-origin `/api/...`

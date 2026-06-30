@@ -107,6 +107,15 @@ Key, sends it once during registration, and Wardrobe stores the token hash plus
 owner/workspace binding. The registration response returns only a token prefix
 and metadata, never the raw key.
 
+Fresh public Home AI installs must not depend on migrated Wardrobe owner
+tokens. For first registration, Wardrobe accepts a registration-only bearer key
+read from `HERMES_MOBILE_WARDROBE_REGISTRATION_ACCESS_KEY_PATH` or
+`WARDROBE_REGISTRATION_ACCESS_KEY_PATH`. If neither env var is set, Wardrobe
+checks the Home AI root default
+`data/plugin-secrets/wardrobe-registration-access-key.txt`. This credential is
+valid only for `POST /api/v1/hermes/plugin/workspaces`; it does not authorize
+launch, sync, item writes, history writes, or frame-ancestor registration.
+
 Hermes Mobile onboarding must also install the complete
 `wardrobe-style-operations` Skill bundle into the new user's independent Skill
 Store. That bundle includes `SKILL.md`, `references/*.md`, and `scripts/*`.

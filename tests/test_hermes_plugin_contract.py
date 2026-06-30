@@ -121,6 +121,15 @@ class HermesPluginContractHarnessTests(unittest.TestCase):
         self.assertIn("wardrobe.set_primary_photo", manifest["mcp"]["required_tools"])
         self.assertIn("wardrobe.prepare_outfit_wear_intent", manifest["mcp"]["required_tools"])
         self.assertIn("wardrobe.execute_outfit_wear_intent", manifest["mcp"]["required_tools"])
+        self.assertIn("registration_access_key", manifest["permissions"]["register_workspace_requires"])
+        self.assertEqual(
+            manifest["permissions"]["registration_access_key"]["accepted_path_env"],
+            [
+                "HERMES_MOBILE_WARDROBE_REGISTRATION_ACCESS_KEY_PATH",
+                "WARDROBE_REGISTRATION_ACCESS_KEY_PATH",
+            ],
+        )
+        self.assertFalse(manifest["permissions"]["registration_access_key"]["raw_key_returned_by_wardrobe"])
         for pattern in SECRET_PATTERNS:
             self.assertIsNone(pattern.search(manifest_text), pattern.pattern)
 
