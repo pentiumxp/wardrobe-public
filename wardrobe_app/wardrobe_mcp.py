@@ -912,6 +912,10 @@ class WardrobeMcpService:
             return None
         return data_dir / "artifacts" / "wardrobe-thumbnails" / workspace_id
 
+    @staticmethod
+    def _workspace_thumbnail_cache_dir(runtime: WorkspaceRuntime) -> Path:
+        return runtime.cache_dir / "photos"
+
     @classmethod
     def _thumbnail_cache_candidates(cls, runtime: WorkspaceRuntime, cache_filename: str) -> list[Path]:
         candidates = [runtime.photo_cache_dir / cache_filename]
@@ -920,7 +924,29 @@ class WardrobeMcpService:
             artifact_target = artifact_dir / cache_filename
             if artifact_target != candidates[0]:
                 candidates.append(artifact_target)
+        workspace_target = cls._workspace_thumbnail_cache_dir(runtime) / cache_filename
+        if workspace_target not in candidates:
+            candidates.append(workspace_target)
         return candidates
+
+    @staticmethod
+    def _write_thumbnail_target(
+        target: Path,
+        raw: bytes,
+        *,
+        allow_direct_new_file: bool,
+    ) -> str:
+        try:
+            _atomic_write_bytes(target, raw)
+            return "atomic"
+        except (PermissionError, NotADirectoryError, FileExistsError):
+            if allow_direct_new_file and not target.exists():
+                try:
+                    _write_new_file_bytes(target, raw)
+                    return "direct_new_file"
+                except (FileExistsError, PermissionError, NotADirectoryError, OSError):
+                    pass
+            return ""
 
     @classmethod
     def _write_thumbnail_cache(
@@ -930,32 +956,41 @@ class WardrobeMcpService:
         raw: bytes,
     ) -> tuple[Path, dict[str, str] | None]:
         target = runtime.photo_cache_dir / cache_filename
-        try:
-            _atomic_write_bytes(target, raw)
+        write_mode = cls._write_thumbnail_target(target, raw, allow_direct_new_file=True)
+        if write_mode == "atomic":
             return target, None
-        except (PermissionError, NotADirectoryError, FileExistsError) as exc:
-            if not target.exists():
-                try:
-                    _write_new_file_bytes(target, raw)
-                    return target, {
-                        "cache_warning": "thumbnail_cache_atomic_write_unavailable",
-                        "cache_path_kind": "configured_photo_cache_dir",
+        if write_mode == "direct_new_file":
+            return target, {
+                "cache_warning": "thumbnail_cache_atomic_write_unavailable",
+                "cache_path_kind": "configured_photo_cache_dir",
+            }
+        artifact_dir = cls._home_ai_thumbnail_artifact_dir(runtime)
+        if artifact_dir is not None:
+            artifact_target = artifact_dir / cache_filename
+            if artifact_target != target:
+                write_mode = cls._write_thumbnail_target(
+                    artifact_target,
+                    raw,
+                    allow_direct_new_file=True,
+                )
+                if write_mode:
+                    return artifact_target, {
+                        "cache_warning": "photo_cache_dir_unwritable",
+                        "cache_path_kind": "home_ai_artifact",
                     }
-                except (FileExistsError, PermissionError, NotADirectoryError, OSError):
-                    pass
-            artifact_dir = cls._home_ai_thumbnail_artifact_dir(runtime)
-            if artifact_dir is not None:
-                artifact_target = artifact_dir / cache_filename
-                if artifact_target != target:
-                    try:
-                        _atomic_write_bytes(artifact_target, raw)
-                        return artifact_target, {
-                            "cache_warning": "photo_cache_dir_unwritable",
-                            "cache_path_kind": "home_ai_artifact",
-                        }
-                    except (PermissionError, NotADirectoryError, OSError):
-                        pass
-            raise WardrobeMcpError("thumbnail_cache_write_failed") from exc
+        workspace_target = cls._workspace_thumbnail_cache_dir(runtime) / cache_filename
+        if workspace_target != target:
+            write_mode = cls._write_thumbnail_target(
+                workspace_target,
+                raw,
+                allow_direct_new_file=True,
+            )
+            if write_mode:
+                return workspace_target, {
+                    "cache_warning": "photo_cache_dir_unwritable_workspace_cache_used",
+                    "cache_path_kind": "workspace_cache",
+                }
+        raise WardrobeMcpError("thumbnail_cache_write_failed")
 
     def get_item(self, args: dict[str, Any]) -> dict[str, Any]:
         _, client = self._runtime_and_client(args)

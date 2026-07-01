@@ -295,6 +295,12 @@ Behavior:
 - If the configured cache path is unusable and `HERMES_WEB_DATA_DIR` /
   `HERMES_MOBILE_DATA_DIR` is available, the tool writes to the Home AI
   artifact thumbnail root and returns `cache_warning=photo_cache_dir_unwritable`.
+- If the configured path is already the Home AI artifact thumbnail root but the
+  active MCP runtime cannot write there, the tool may write a new thumbnail
+  under the owner workspace cache and returns
+  `cache_warning=photo_cache_dir_unwritable_workspace_cache_used`. This is a
+  bounded mitigation; Home AI provisioning still owns the durable artifact
+  directory ACL/ownership repair.
 - Does not fetch original image bytes.
 
 ### `wardrobe.set_primary_photo`
