@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import io
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 from wardrobe_app.wardrobe_mcp import (
     ApiResult,
@@ -792,6 +794,79 @@ class WardrobeMcpTests(unittest.TestCase):
         self.assertFalse(result["has_photo"])
         self.assertEqual(result["reason"], "primary_photo_null")
         self.assertEqual(fake.binary_calls, [])
+
+    def test_get_primary_thumbnail_writes_new_file_when_atomic_cache_write_denied(self) -> None:
+        fake = FakeWardrobeApiClient(
+            None,
+            json_responses={
+                ("GET", "/api/v1/items/A"): ApiResult(
+                    200,
+                    {},
+                    {
+                        "item": {
+                            "code": "A",
+                            "primary_photo": {
+                                "photo_id": 1,
+                                "thumbnail_path": "/api/v1/items/A/photos/primary/thumbnail",
+                                "cache_filename": "A_1_photo.jpg",
+                            },
+                        }
+                    },
+                )
+            },
+            binary_responses={
+                ("GET", "/api/v1/items/A/photos/primary/thumbnail"): ApiResult(200, {}, None, JPEG_BYTES),
+            },
+        )
+
+        with mock.patch("wardrobe_app.wardrobe_mcp._atomic_write_bytes", side_effect=PermissionError("denied")):
+            result = self._service_with_client(fake).get_primary_thumbnail({"code": "A", "prefer_cache": False})
+
+        target = self.workspace / ".hermes-cache" / "photos" / "A_1_photo.jpg"
+        self.assertEqual(Path(result["local_path"]).resolve(), target.resolve())
+        self.assertEqual(result["cache_warning"], "thumbnail_cache_atomic_write_unavailable")
+        self.assertEqual(result["cache_path_kind"], "configured_photo_cache_dir")
+        self.assertEqual(target.read_bytes(), JPEG_BYTES)
+
+    def test_get_primary_thumbnail_uses_home_ai_artifact_dir_when_configured_cache_is_not_directory(self) -> None:
+        config_path = self.workspace / ".hermes-wardrobe" / "config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["photo_cache_dir"] = ".hermes-cache/photos-file"
+        config["hermes_workspace_id"] = "owner"
+        config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+        (self.workspace / ".hermes-cache" / "photos-file").write_text("not a directory", encoding="utf-8")
+        home_ai_data_dir = self.workspace / "home-ai-data"
+        fake = FakeWardrobeApiClient(
+            None,
+            json_responses={
+                ("GET", "/api/v1/items/A"): ApiResult(
+                    200,
+                    {},
+                    {
+                        "item": {
+                            "code": "A",
+                            "primary_photo": {
+                                "photo_id": 1,
+                                "thumbnail_path": "/api/v1/items/A/photos/primary/thumbnail",
+                                "cache_filename": "A_1_photo.jpg",
+                            },
+                        }
+                    },
+                )
+            },
+            binary_responses={
+                ("GET", "/api/v1/items/A/photos/primary/thumbnail"): ApiResult(200, {}, None, JPEG_BYTES),
+            },
+        )
+
+        with mock.patch.dict(os.environ, {"HERMES_MOBILE_DATA_DIR": str(home_ai_data_dir)}):
+            result = self._service_with_client(fake).get_primary_thumbnail({"code": "A", "prefer_cache": False})
+
+        target = home_ai_data_dir / "artifacts" / "wardrobe-thumbnails" / "owner" / "A_1_photo.jpg"
+        self.assertEqual(Path(result["local_path"]).resolve(), target.resolve())
+        self.assertEqual(result["cache_warning"], "photo_cache_dir_unwritable")
+        self.assertEqual(result["cache_path_kind"], "home_ai_artifact")
+        self.assertEqual(target.read_bytes(), JPEG_BYTES)
 
     def test_partial_sync_does_not_replace_main_manifest(self) -> None:
         old_manifest = self._manifest(

@@ -147,7 +147,11 @@ The MCP server owns the owner-local wardrobe cache lifecycle:
 
 - manifest and resource JSON validation
 - atomic writes under `.hermes-cache/outfit-context-manifest.json` and `.hermes-cache/resources/`
-- first-photo thumbnail validation and writes under `.hermes-cache/photos/`
+- first-photo thumbnail validation and writes under the configured `photo_cache_dir`;
+  current Home AI provisioning should point this at
+  `<HERMES_DATA_DIR>/artifacts/wardrobe-thumbnails/<workspaceId>` so Gateway
+  file/image tools can read returned thumbnail paths without exposing the
+  owner workspace cache
 - stale first-photo thumbnail cleanup
 - no-photo item handling
 - stale/offline cache reporting
@@ -283,7 +287,14 @@ Behavior:
 - Reads live `GET /api/v1/items/{code}` first.
 - If `primary_photo` is null, returns `has_photo=false` without error.
 - If the current `primary_photo_thumbnails` resource lists the exact `cache_filename` and the local file is valid, returns the local path.
-- Otherwise downloads the safe JPEG thumbnail endpoint and stores it under `.hermes-cache/photos/{cache_filename}`.
+- Otherwise downloads the safe JPEG thumbnail endpoint and stores it under the
+  configured `photo_cache_dir`.
+- If an older owner-local cache directory permits new files but rejects atomic
+  replace/cleanup, new thumbnails can still be written directly and the result
+  includes `cache_warning=thumbnail_cache_atomic_write_unavailable`.
+- If the configured cache path is unusable and `HERMES_WEB_DATA_DIR` /
+  `HERMES_MOBILE_DATA_DIR` is available, the tool writes to the Home AI
+  artifact thumbnail root and returns `cache_warning=photo_cache_dir_unwritable`.
 - Does not fetch original image bytes.
 
 ### `wardrobe.set_primary_photo`

@@ -53,6 +53,12 @@ CANONICAL_LAYER_ROLES = (
     "Bespoke",
 )
 CANONICAL_OUTFIT_ROLES = ("Inner", "Middle", "Outer", "Bottom", "Footwear", "Accessory", "Watch")
+HOME_AI_DATA_DIR_ENV_KEYS = (
+    "HERMES_WEB_DATA_DIR",
+    "HERMES_MOBILE_DATA_DIR",
+    "HERMES_DATA_DIR",
+    "HOMEAI_DATA_DIR",
+)
 
 
 class WardrobeMcpError(Exception):
@@ -118,6 +124,22 @@ def _atomic_write_json(path: Path, data: Any) -> None:
     _atomic_write_bytes(path, (_json_dumps(data) + "\n").encode("utf-8"))
 
 
+def _write_new_file_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except Exception:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def _bool_arg(value: Any, *, default: bool = False) -> bool:
     if value is None:
         return default
@@ -136,6 +158,23 @@ def _resolve_under_workspace(workspace: Path, value: str, default: str) -> Path:
     if not path.is_absolute():
         path = workspace / path
     return path
+
+
+def _safe_workspace_id(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or len(text) > 120:
+        return ""
+    if not all(ch.isalnum() or ch in {"-", "_"} for ch in text):
+        return ""
+    return text
+
+
+def _home_ai_data_dir() -> Path | None:
+    for key in HOME_AI_DATA_DIR_ENV_KEYS:
+        raw = str(os.environ.get(key) or "").strip()
+        if raw:
+            return Path(raw).expanduser()
+    return None
 
 
 def load_workspace(workspace_arg: str | None = None) -> WorkspaceRuntime:
@@ -784,6 +823,7 @@ class WardrobeMcpService:
         allowed_files: set[str] = set()
         downloaded = reused = failed = 0
         failures: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -800,7 +840,16 @@ class WardrobeMcpService:
                 result = client.request_binary("GET", thumbnail_path, ok_statuses={200})
                 if not self._looks_like_jpeg(result.raw):
                     raise WardrobeMcpError("thumbnail_not_jpeg")
-                _atomic_write_bytes(target, result.raw)
+                _, write_warning = self._write_thumbnail_cache(runtime, cache_filename, result.raw)
+                if write_warning:
+                    warnings.append(
+                        {
+                            "code": row.get("code"),
+                            "photo_id": row.get("photo_id"),
+                            "cache_filename": cache_filename,
+                            **write_warning,
+                        }
+                    )
                 downloaded += 1
             except Exception as exc:
                 failed += 1
@@ -820,6 +869,7 @@ class WardrobeMcpService:
             "failed": failed,
             "removed_stale": removed_stale,
             "failures": failures[:20],
+            "warnings": warnings[:20],
         }
 
     @staticmethod
@@ -847,6 +897,65 @@ class WardrobeMcpService:
     @staticmethod
     def _looks_like_jpeg(raw: bytes) -> bool:
         return len(raw) >= 4 and raw.startswith(b"\xff\xd8") and raw.endswith(b"\xff\xd9")
+
+    @staticmethod
+    def _home_ai_thumbnail_artifact_dir(runtime: WorkspaceRuntime) -> Path | None:
+        data_dir = _home_ai_data_dir()
+        if data_dir is None:
+            return None
+        workspace_id = _safe_workspace_id(
+            runtime.config.get("hermes_workspace_id")
+            or runtime.config.get("workspace_id")
+            or runtime.config.get("owner")
+        )
+        if not workspace_id:
+            return None
+        return data_dir / "artifacts" / "wardrobe-thumbnails" / workspace_id
+
+    @classmethod
+    def _thumbnail_cache_candidates(cls, runtime: WorkspaceRuntime, cache_filename: str) -> list[Path]:
+        candidates = [runtime.photo_cache_dir / cache_filename]
+        artifact_dir = cls._home_ai_thumbnail_artifact_dir(runtime)
+        if artifact_dir is not None:
+            artifact_target = artifact_dir / cache_filename
+            if artifact_target != candidates[0]:
+                candidates.append(artifact_target)
+        return candidates
+
+    @classmethod
+    def _write_thumbnail_cache(
+        cls,
+        runtime: WorkspaceRuntime,
+        cache_filename: str,
+        raw: bytes,
+    ) -> tuple[Path, dict[str, str] | None]:
+        target = runtime.photo_cache_dir / cache_filename
+        try:
+            _atomic_write_bytes(target, raw)
+            return target, None
+        except (PermissionError, NotADirectoryError, FileExistsError) as exc:
+            if not target.exists():
+                try:
+                    _write_new_file_bytes(target, raw)
+                    return target, {
+                        "cache_warning": "thumbnail_cache_atomic_write_unavailable",
+                        "cache_path_kind": "configured_photo_cache_dir",
+                    }
+                except (FileExistsError, PermissionError, NotADirectoryError, OSError):
+                    pass
+            artifact_dir = cls._home_ai_thumbnail_artifact_dir(runtime)
+            if artifact_dir is not None:
+                artifact_target = artifact_dir / cache_filename
+                if artifact_target != target:
+                    try:
+                        _atomic_write_bytes(artifact_target, raw)
+                        return artifact_target, {
+                            "cache_warning": "photo_cache_dir_unwritable",
+                            "cache_path_kind": "home_ai_artifact",
+                        }
+                    except (PermissionError, NotADirectoryError, OSError):
+                        pass
+            raise WardrobeMcpError("thumbnail_cache_write_failed") from exc
 
     def get_item(self, args: dict[str, Any]) -> dict[str, Any]:
         _, client = self._runtime_and_client(args)
@@ -892,25 +1001,26 @@ class WardrobeMcpService:
         )
         if not cache_filename:
             cache_filename = self._fallback_cache_filename(code, primary_photo)
-        target = runtime.photo_cache_dir / cache_filename
         listed = self._current_thumbnail_resource_lists(runtime, cache_filename)
-        if prefer_cache and listed and self._valid_jpeg_file(target):
-            return {
-                "code": code,
-                "has_photo": True,
-                "photo_id": primary_photo.get("photo_id") or primary_photo.get("id"),
-                "cache_filename": cache_filename,
-                "local_path": str(target),
-                "downloaded": False,
-                "source": "cache",
-            }
+        if prefer_cache and listed:
+            for candidate in self._thumbnail_cache_candidates(runtime, cache_filename):
+                if self._valid_jpeg_file(candidate):
+                    return {
+                        "code": code,
+                        "has_photo": True,
+                        "photo_id": primary_photo.get("photo_id") or primary_photo.get("id"),
+                        "cache_filename": cache_filename,
+                        "local_path": str(candidate),
+                        "downloaded": False,
+                        "source": "cache",
+                    }
         if not thumbnail_path:
             raise WardrobeMcpError("missing_thumbnail_path")
         result = client.request_binary("GET", thumbnail_path, ok_statuses={200})
         if not self._looks_like_jpeg(result.raw):
             raise WardrobeMcpError("thumbnail_not_jpeg")
-        _atomic_write_bytes(target, result.raw)
-        return {
+        target, write_warning = self._write_thumbnail_cache(runtime, cache_filename, result.raw)
+        response = {
             "code": code,
             "has_photo": True,
             "photo_id": primary_photo.get("photo_id") or primary_photo.get("id"),
@@ -919,6 +1029,9 @@ class WardrobeMcpService:
             "downloaded": True,
             "source": "api",
         }
+        if write_warning:
+            response.update(write_warning)
+        return response
 
     @staticmethod
     def _fallback_cache_filename(code: str, primary_photo: dict[str, Any]) -> str:
