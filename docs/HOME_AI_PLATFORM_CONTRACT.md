@@ -1,7 +1,7 @@
 # Home AI Platform Contract Pointer
 
-Last updated: 2026-07-07.
-Home AI platform contract version: `20260707-v7`.
+Last updated: 2026-07-08.
+Home AI platform contract version: `20260708-v8`.
 
 ## Scope
 
@@ -68,8 +68,9 @@ mitigation.
 | `plugin_manifest_actions_status` | `declared`; Wardrobe exposes manifest `actions` for host Dock `常用`, long-press menus, and search. |
 | `github_shared_source_account_status` | `adopted`; writable source remote `origin` uses SSH alias `github.com-homeai-ssa` for `pentiumxp/wardrob.git`; private key remains a local operator secret outside this repo. |
 | `github_shared_source_account_helper` | `/Users/hermes-dev/HermesMobileDev/app/scripts/github-shared-source-account.js` |
-| `plugin_main_preflight_command` | `node /Users/hermes-dev/HermesMobileDev/app/scripts/main-thread-routing-preflight.js --source-thread-role plugin_main --task "<task>" --changed-file <path> --mode classify` |
-| `plugin_worker_dispatch_policy` | If preflight returns `classification=plugin_worker`, create a bounded `plugin_worker` card with terminal return, privacy boundary, conflict rule, and expected validation, or return `blocked` with the missing lane. Forbidden Worker targets: Task Intake, deploy lane, audit lane, Loop lane, current thread, source thread. |
+| `plugin_main_preflight_command` | `cd /Users/hermes-dev/HermesMobileDev/app && node scripts/main-thread-routing-preflight.js --source-thread-role plugin_main --task "<task>" --changed-file <path> --mode classify` |
+| `plugin_worker_dispatch_policy` | When classification is `plugin_worker`, dispatch a `plugin_worker` card with terminal return, Chinese receipt, privacy boundary, conflict rule, expected validation, and no Task Intake/deploy/audit/Loop/current-thread fallback, or return `blocked` with the missing legal lane. |
+| `plugin_worker_pool_lifecycle_policy` | Use the stable `plugin_worker` Worker pool with resolve-before-create; reuse available lanes, mark lanes busy while a task card is active, require per-task-card heartbeat, activate the Watchdog for that task card after `1800000ms` without heartbeat, batch limit `8`, maximum auto-resume `1`, release lanes after terminal return with Chinese receipt, reject task-title Worker names as sprawl, and create only for `missing_role_lane`, `pool_exhausted`, or `no_legal_lane`. |
 
 ## Required Local Validation
 

@@ -38,9 +38,13 @@
 4a. 插件主线程 / source thread 在分派 Worker 前必须先跑 Home AI 主线程路由 preflight。
    - 命令：
      `node /Users/hermes-dev/HermesMobileDev/app/scripts/main-thread-routing-preflight.js --source-thread-role plugin_main --task "<task>" --changed-file <path> --mode classify`
-   - 如果结果是 `classification=plugin_worker`，只能分派一个 bounded `plugin_worker` 任务卡，并且卡片必须包含 terminal return、privacy boundary、conflict rule 和 expected validation。
-   - 如果没有可用 plugin worker lane，返回 `blocked` 并说明缺失 lane。
+   - 如果结果是 `classification=plugin_worker`，只能分派一个 bounded `plugin_worker` 任务卡，并且卡片必须包含 terminal return、privacy boundary、conflict rule 和 expected validation；如果没有合法 lane，返回 `blocked` 并说明缺失 lane。
    - 不要把 Task Intake、deploy lanes、audit lanes、Loop lanes 或当前插件 source thread 当作 Worker fallback。
+   - Worker terminal return-card body 和 Owner-visible receipt 必须使用中文（`zh-CN`）。
+   - 分派前必须先 resolve/list 稳定可复用的 `plugin_worker` Worker pool；复用 available lane，任务活动期间标记 busy，terminal return 后释放为 available/idle。
+   - 只允许在 `missing_role_lane`、`pool_exhausted` 或 `no_legal_lane` 时创建新 Worker；拒绝用任务标题、问题摘要、诊断 id 或修复标题命名的一次性 Worker，避免 Worker sprawl。
+   - heartbeat 属于每张 task card，不属于 Worker；同一 Worker 上两张 active cards 需要两条独立 heartbeat。
+   - Watchdog 默认超时 `1800000ms` / 30 分钟，batch `8`，max auto-resume `1`；恢复时必须 resume/activate 同一张 stale task card，不创建任务标题 Worker。
 
 5. 本地调试前，默认先同步 Mac 生产库到本地。
    旧的 `scripts/sync-nas-db-to-local.ps1` 名称已经过时；使用前必须确认它当前实际从 Mac 生产库拉取，不能从 NAS 拉取，也不能反向写回生产库。
