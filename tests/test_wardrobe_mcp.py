@@ -15,6 +15,7 @@ from wardrobe_app.wardrobe_mcp import (
     McpStdioServer,
     WardrobeMcpError,
     WardrobeMcpService,
+    _atomic_write_bytes,
     build_arg_parser,
 )
 from wardrobe_app import program_api_sync
@@ -88,6 +89,22 @@ class WardrobeMcpTests(unittest.TestCase):
             default_workspace=str(self.workspace),
             client_factory=lambda runtime: fake_client,
         )
+
+    def test_atomic_write_bytes_default_keeps_private_temp_mode(self) -> None:
+        target = self.workspace / ".hermes-cache" / "resources" / "private.json"
+
+        _atomic_write_bytes(target, b"{}\n")
+
+        self.assertEqual(target.read_bytes(), b"{}\n")
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+
+    def test_atomic_write_bytes_allows_explicit_document_mode(self) -> None:
+        target = self.workspace / "receipt.md"
+
+        _atomic_write_bytes(target, b"# Receipt\n", final_mode=0o644)
+
+        self.assertEqual(target.read_bytes(), b"# Receipt\n")
+        self.assertEqual(target.stat().st_mode & 0o777, 0o644)
 
     @staticmethod
     def _manifest(resources: list[dict[str, Any]], etag: str = "sha256:manifest") -> dict[str, Any]:

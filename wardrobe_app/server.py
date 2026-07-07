@@ -215,6 +215,7 @@ PROGRAM_API_ITEM_PHOTO_MAX_TOTAL_BYTES = max(
 XLSX_NS = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 EXPORT_UID = int(os.environ["WARDROBE_EXPORT_UID"]) if os.environ.get("WARDROBE_EXPORT_UID") else None
 EXPORT_GID = int(os.environ["WARDROBE_EXPORT_GID"]) if os.environ.get("WARDROBE_EXPORT_GID") else None
+EXPORT_FILE_MODE = 0o644
 EXIF_GPS_INFO_TAG = next((tag for tag, name in ExifTags.TAGS.items() if name == "GPSInfo"), 34853)
 AI_SECRET_FILE = DATA_DIR / "dashscope_api_key.txt"
 AI_BASE_URL = os.environ.get("WARDROBE_AI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
@@ -3325,6 +3326,13 @@ def _apply_export_ownership(path: Path) -> None:
         return
 
 
+def _apply_export_file_mode(path: Path) -> None:
+    try:
+        os.chmod(path, EXPORT_FILE_MODE)
+    except OSError as exc:
+        raise RuntimeError(f"export_file_mode_failed:{path}") from exc
+
+
 def _textual_content_type(content_type: str | None, path: Path) -> str:
     base = (content_type or "application/octet-stream").split(";", 1)[0].strip().lower()
     suffix = path.suffix.lower()
@@ -3552,9 +3560,12 @@ def _finalize_export_file(temp_path: Path, target_path: Path) -> None:
         temp_path.replace(target_path)
     except PermissionError as exc:
         raise RuntimeError(f"baseline_file_locked:{target_path}") from exc
+    _apply_export_file_mode(target_path)
     _apply_export_ownership(target_path)
     _stabilize_export_for_drive(target_path)
     _nudge_export_for_drive(target_path)
+    _apply_export_file_mode(target_path)
+    _apply_export_ownership(target_path)
     _pulse_export_directory(target_path.parent)
     _enqueue_drive_notify(target_path)
 

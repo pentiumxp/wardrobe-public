@@ -103,16 +103,20 @@ def _read_json_file(path: Path) -> Any | None:
         return None
 
 
-def _atomic_write_bytes(path: Path, data: bytes) -> None:
+def _atomic_write_bytes(path: Path, data: bytes, *, final_mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     temp_path = Path(temp_name)
     try:
+        if final_mode is not None:
+            os.fchmod(fd, final_mode)
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
         temp_path.replace(path)
+        if final_mode is not None:
+            os.chmod(path, final_mode)
     finally:
         try:
             temp_path.unlink()

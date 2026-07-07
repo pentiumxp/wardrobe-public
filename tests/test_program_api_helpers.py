@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest import mock
 
 from wardrobe_app import db, program_api_sync, server
 
@@ -50,6 +51,35 @@ class ProgramApiHelperTests(unittest.TestCase):
         self.assertEqual(server._ai_api_key(), "")
         with self.assertRaisesRegex(RuntimeError, "Hermes Mobile MCP"):
             server._execute_ai_request({})
+
+    def test_markdown_export_final_mode_is_server_readable_under_private_umask(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            target_dir = Path(directory_name)
+            patches = [
+                mock.patch.object(server, "_stabilize_export_for_drive", return_value=None),
+                mock.patch.object(server, "_nudge_export_for_drive", return_value=None),
+                mock.patch.object(server, "_pulse_export_directory", return_value=None),
+                mock.patch.object(server, "_enqueue_drive_notify", return_value=None),
+            ]
+            for patcher in patches:
+                patcher.start()
+            old_umask = os.umask(0o077)
+            try:
+                results = server._export_markdown_doc_to_targets(
+                    "receipt.md",
+                    "# Receipt\n\nbounded test\n",
+                    "receipt",
+                    [target_dir],
+                )
+            finally:
+                os.umask(old_umask)
+                for patcher in reversed(patches):
+                    patcher.stop()
+
+            receipt_path = target_dir / "receipt.md"
+            self.assertEqual(results[0]["path"], str(receipt_path))
+            self.assertEqual(receipt_path.read_text(encoding="utf-8"), "# Receipt\n\nbounded test\n")
+            self.assertEqual(receipt_path.stat().st_mode & 0o777, 0o644)
 
     def _insert_token(self, token: str, owner: str, scopes: list[str]) -> None:
         self.conn.execute(
