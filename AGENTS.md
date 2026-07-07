@@ -35,6 +35,13 @@
    - 测试、视觉核验、部署和生产 smoke 通过后写入 `$HOME/.homeai-qa/wardrobe-evidence-ledger.jsonl`。
    - 复杂事故使用 incident cassette，不把长日志、私密内容或原始截图说明塞进 handoff。
 
+4a. 插件主线程 / source thread 在分派 Worker 前必须先跑 Home AI 主线程路由 preflight。
+   - 命令：
+     `node /Users/hermes-dev/HermesMobileDev/app/scripts/main-thread-routing-preflight.js --source-thread-role plugin_main --task "<task>" --changed-file <path> --mode classify`
+   - 如果结果是 `classification=plugin_worker`，只能分派一个 bounded `plugin_worker` 任务卡，并且卡片必须包含 terminal return、privacy boundary、conflict rule 和 expected validation。
+   - 如果没有可用 plugin worker lane，返回 `blocked` 并说明缺失 lane。
+   - 不要把 Task Intake、deploy lanes、audit lanes、Loop lanes 或当前插件 source thread 当作 Worker fallback。
+
 5. 本地调试前，默认先同步 Mac 生产库到本地。
    旧的 `scripts/sync-nas-db-to-local.ps1` 名称已经过时；使用前必须确认它当前实际从 Mac 生产库拉取，不能从 NAS 拉取，也不能反向写回生产库。
 

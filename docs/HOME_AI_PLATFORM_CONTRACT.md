@@ -1,7 +1,7 @@
 # Home AI Platform Contract Pointer
 
-Last updated: 2026-06-25.
-Home AI platform contract version: `20260623-v5`.
+Last updated: 2026-07-07.
+Home AI platform contract version: `20260707-v7`.
 
 ## Scope
 
@@ -20,6 +20,8 @@ behavior, or cross-plugin reference behavior:
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/macos-dev-to-production-deployment-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/root-cause-architecture-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/fallback-governance-contract.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/autonomous-delivery-loop-contract.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/worker-pool-lifecycle-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/github-shared-source-account-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/fallback-registry.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/github-shared-source-account.md`
@@ -66,6 +68,8 @@ mitigation.
 | `plugin_manifest_actions_status` | `declared`; Wardrobe exposes manifest `actions` for host Dock `常用`, long-press menus, and search. |
 | `github_shared_source_account_status` | `adopted`; writable source remote `origin` uses SSH alias `github.com-homeai-ssa` for `pentiumxp/wardrob.git`; private key remains a local operator secret outside this repo. |
 | `github_shared_source_account_helper` | `/Users/hermes-dev/HermesMobileDev/app/scripts/github-shared-source-account.js` |
+| `plugin_main_preflight_command` | `node /Users/hermes-dev/HermesMobileDev/app/scripts/main-thread-routing-preflight.js --source-thread-role plugin_main --task "<task>" --changed-file <path> --mode classify` |
+| `plugin_worker_dispatch_policy` | If preflight returns `classification=plugin_worker`, create a bounded `plugin_worker` card with terminal return, privacy boundary, conflict rule, and expected validation, or return `blocked` with the missing lane. Forbidden Worker targets: Task Intake, deploy lane, audit lane, Loop lane, current thread, source thread. |
 
 ## Required Local Validation
 
