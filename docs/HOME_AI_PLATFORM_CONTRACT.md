@@ -1,7 +1,7 @@
 # Home AI Platform Contract Pointer
 
-Last updated: 2026-07-08.
-Home AI platform contract version: `20260708-v8`.
+Last updated: 2026-07-14.
+Home AI platform contract version: `20260714-v12`.
 
 ## Scope
 
@@ -20,10 +20,12 @@ behavior, or cross-plugin reference behavior:
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/macos-dev-to-production-deployment-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/root-cause-architecture-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/fallback-governance-contract.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/product-reality-audit-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/autonomous-delivery-loop-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/worker-pool-lifecycle-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/PLATFORM_CONTRACTS/github-shared-source-account-contract.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/fallback-registry.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/product-reality-audit-loop.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/github-shared-source-account.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/macos-production-access.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/RUNBOOKS/mcp-tool-upgrade-closure.md`
@@ -33,6 +35,9 @@ behavior, or cross-plugin reference behavior:
 - `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/reference-memory-graph-v1.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/reference-memory-graph-harness-plan.md`
 - `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/plugin-topic-directory-claims.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/MODULES/deployment.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/IMPLEMENTATION_NOTES/harness-required-matrix.md`
+- `/Users/hermes-dev/HermesMobileDev/app/docs/TEST_MATRIX.md`
 
 For non-trivial plugin bugfix, deployment, MCP, schema, or provisioning work,
 follow the central root-cause architecture contract before fixing. Any fallback
@@ -45,8 +50,9 @@ mitigation.
 | Field | Value |
 | --- | --- |
 | `plugin_id` | `wardrobe` |
+| `repository_path_macos` | `/Users/hermes-dev/HermesMobileDev/plugins/wardrobe` |
 | `workspace_path_windows` | `C:\Users\xuxin\Documents\男装衣橱` |
-| `current_branch_snapshot` | `codex/program-api-item-uploads` at `3bec104` when this pointer was added |
+| `current_branch_snapshot` | `main` at `cdaa3983edc9fc6c8724026aaaeb1712bd209cd2` before the v12 reconciliation commit |
 | `production_source_path_macos` | `/Users/hermes-host/HermesMobile/plugins/wardrobe` |
 | `production_data_root_macos` | `/Users/hermes-host/HermesMobile/plugins/wardrobe/data` |
 | `windows_dev_base_url` | `http://127.0.0.1:8765` |
@@ -56,7 +62,7 @@ mitigation.
 | `mcp_command` | `python wardrobe_app/wardrobe_mcp.py` or `python scripts/wardrobe-mcp.py`; verify the Gateway profile runtime path before production changes |
 | `mcp_schema_endpoint` | MCP `tools/list` through the stdio wrapper; Program API manifest at `/api/v1/hermes/plugin/manifest` |
 | `dev_runtime_prerequisites` | Mac DEV must expose Python through `/Users/xuxin/Developer/HomeAIDev/bin/python` and `/Users/hermes-dev/HermesMobileDev/runtime/python-current`; run `python --version` before classifying MCP wrapper failures. |
-| `deploy_command` | Use the Home AI Mac access runbook; do not use historical NAS deploy commands for production. |
+| `deploy_command` | `cd /Users/hermes-dev/HermesMobileDev/app && npm run --silent deploy:macos -- --plugin wardrobe --source /Users/hermes-dev/HermesMobileDev/plugins/wardrobe --json`; this is plan-only unless an authorized task explicitly requests `--execute`. |
 | `credential_locations` | Workspace-local Program API config/key files only by reference. Do not record raw keys or tokens here. |
 | `reference_contract_status` | `planned`; Wardrobe is a structured fact source and should later expose Reference Contract methods for items, outfits, wear history, and featured looks. |
 | `mobile_visual_harness_status` | Embedded UI exists; use Home AI Appium/iOS Simulator evidence when embedded shell, bottom layout, long-press, or plugin iframe behavior changes. |
@@ -71,6 +77,7 @@ mitigation.
 | `plugin_main_preflight_command` | `cd /Users/hermes-dev/HermesMobileDev/app && node scripts/main-thread-routing-preflight.js --source-thread-role plugin_main --task "<task>" --changed-file <path> --mode classify` |
 | `plugin_worker_dispatch_policy` | When classification is `plugin_worker`, dispatch a `plugin_worker` card with terminal return, Chinese receipt, privacy boundary, conflict rule, expected validation, and no Task Intake/deploy/audit/Loop/current-thread fallback, or return `blocked` with the missing legal lane. |
 | `plugin_worker_pool_lifecycle_policy` | Use the stable `plugin_worker` Worker pool with resolve-before-create; reuse available lanes, mark lanes busy while a task card is active, require per-task-card heartbeat, activate the Watchdog for that task card after `1800000ms` without heartbeat, batch limit `8`, maximum auto-resume `1`, release lanes after terminal return with Chinese receipt, reject task-title Worker names as sprawl, and create only for `missing_role_lane`, `pool_exhausted`, or `no_legal_lane`. |
+| `plugin_worker_return_activation_policy` | Require bounded `sourceActivation` readback for every terminal return; Worker lease completion must not complete source integration; keep pending and failed activation Owner-visible until reconciled before the next slice or final closure; issue codes `source_thread_activation_required_for_return`, `return_projection_missing_after_terminal_return`, `source_activation_pending_after_terminal_return`, `source_activation_blocked_after_terminal_return`. |
 
 ## Required Local Validation
 

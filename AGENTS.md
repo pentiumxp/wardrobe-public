@@ -25,7 +25,7 @@
    - 不能用本地 `wardrobe.db` 覆盖 Mac 生产库。
 
 4. Home AI AI Operations Control Plane 是 H1/H2、部署、视觉调试、MCP/schema、插件开通、跨模块问题的第一入口。
-   - 中心契约版本：`20260611-v3`
+   - 中心契约版本：`20260714-v12`
    - 本插件 pointer：`docs/HOME_AI_PLATFORM_CONTRACT.md`
    - 先从 Home AI 中心 workspace 运行 intake：
      `cd /Users/hermes-dev/HermesMobileDev/app && node scripts/ai-ops-control-plane.js intake --task "<task>" --json`
@@ -45,6 +45,7 @@
    - 只允许在 `missing_role_lane`、`pool_exhausted` 或 `no_legal_lane` 时创建新 Worker；拒绝用任务标题、问题摘要、诊断 id 或修复标题命名的一次性 Worker，避免 Worker sprawl。
    - heartbeat 属于每张 task card，不属于 Worker；同一 Worker 上两张 active cards 需要两条独立 heartbeat。
    - Watchdog 默认超时 `1800000ms` / 30 分钟，batch `8`，max auto-resume `1`；恢复时必须 resume/activate 同一张 stale task card，不创建任务标题 Worker。
+   - Worker terminal return 后，必须读取 bounded `sourceActivation` 状态再认定 source integration 完成；Worker lease 完成或可见 receipt 不能单独代表闭环。pending/failed activation 必须保持 Owner-visible，并在下一 slice 或最终闭环前完成 reconciliation。相关 issue codes：`source_thread_activation_required_for_return`、`return_projection_missing_after_terminal_return`、`source_activation_pending_after_terminal_return`、`source_activation_blocked_after_terminal_return`。
 
 5. 本地调试前，默认先同步 Mac 生产库到本地。
    旧的 `scripts/sync-nas-db-to-local.ps1` 名称已经过时；使用前必须确认它当前实际从 Mac 生产库拉取，不能从 NAS 拉取，也不能反向写回生产库。
